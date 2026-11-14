@@ -6,6 +6,7 @@ import type { AppContext } from '../context'
 import { resourcePath } from '../paths'
 import { hideWindowReturningFocus, prepareToShow } from './hideWindow'
 import { loadRenderer } from './loadRenderer'
+import { requestRendererFlush } from './rendererFlush'
 import { secureWebPreferences } from './secureWebPreferences'
 
 const DEFAULT_WIDTH = 1280
@@ -136,8 +137,10 @@ export function createMainWindow(
  */
 export function hideMainWindow(win: BrowserWindow): void {
   if (win.isDestroyed()) return
-  // Hiding fires `blur` + `visibilitychange` in the renderer, which is where the detail
-  // panel flushes pending autosaves; nothing to coordinate here.
+  // Save pending detail-panel edits now rather than when the debounce fires: `blur` and
+  // `visibilitychange` are not reliable on hide (an unfocused window gets neither). The
+  // window keeps running while hidden, so there is nothing to wait for.
+  void requestRendererFlush(win)
   if (process.platform === 'darwin' && win.isFullScreen()) {
     win.once('leave-full-screen', () => hideMainWindow(win))
     win.setFullScreen(false)

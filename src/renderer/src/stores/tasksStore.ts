@@ -28,6 +28,8 @@ export interface TasksState {
   restore(id: string): Promise<Task | null>
   /** Apply a main-process broadcast. Idempotent. */
   applyChange(change: DataChange): void
+  /** Resolves once no task write is in flight (including writes started while waiting). */
+  whenIdle(): Promise<void>
 }
 
 const TEMP_PREFIX = 'tmp-'
@@ -41,6 +43,17 @@ const tempResolvedListeners = new Set<(tempId: string, realId: string) => void>(
 export function onTempIdResolved(cb: (tempId: string, realId: string) => void): () => void {
   tempResolvedListeners.add(cb)
   return () => tempResolvedListeners.delete(cb)
+}
+
+/** Every task write currently awaiting the main process (see `whenIdle`). */
+const inflight = new Set<Promise<unknown>>()
+function track<T>(p: Promise<T>): Promise<T> {
+  inflight.add(p)
+  const done = (): void => {
+    inflight.delete(p)
+  }
+  p.then(done, done)
+  return p
 }
 
 function fail(action: string, err: unknown): void {
@@ -100,7 +113,7 @@ export const useTasksStore = create<TasksState>()((set, get) => {
       }
       put(optimistic)
       try {
-        const task = await api().tasks.create(input)
+        const task = await track(api().tasks.create(input))
         drop(tempId)
         put(task)
         for (const cb of tempResolvedListeners) cb(tempId, task.id)
@@ -133,7 +146,7 @@ export const useTasksStore = create<TasksState>()((set, get) => {
       put(next)
       begin(id)
       try {
-        const task = await api().tasks.update(id, patch)
+        const task = await track(api().tasks.update(id, patch))
         end(id)
         if ((get().pending[id] ?? 0) === 0) put(task)
         return task
@@ -163,7 +176,7 @@ export const useTasksStore = create<TasksState>()((set, get) => {
       put(next)
       begin(id)
       try {
-        const task = await api().tasks.move(id, input)
+        const task = await track(api().tasks.move(id, input))
         end(id)
         if ((get().pending[id] ?? 0) === 0) put(task)
         return task
@@ -182,7 +195,7 @@ export const useTasksStore = create<TasksState>()((set, get) => {
       drop(id)
       begin(id)
       try {
-        await api().tasks.delete(id)
+        await track(api().tasks.delete(id))
         end(id)
         return true
       } catch (err) {
@@ -198,7 +211,7 @@ export const useTasksStore = create<TasksState>()((set, get) => {
       if (cached) put(cached)
       begin(id)
       try {
-        const task = await api().tasks.restore(id)
+        const task = await track(api().tasks.restore(id))
         end(id)
         deletedCache.delete(id)
         put(task)
@@ -209,6 +222,10 @@ export const useTasksStore = create<TasksState>()((set, get) => {
         fail('restore task', err)
         return null
       }
+    },
+
+    async whenIdle() {
+      while (inflight.size > 0) await Promise.allSettled([...inflight])
     },
 
     applyChange(change) {

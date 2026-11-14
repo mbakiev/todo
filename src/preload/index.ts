@@ -49,6 +49,7 @@ const api: Api = {
     openSettings: () => invoke(IPC.app.openSettings),
     setGlobalShortcutsSuspended: (suspended) =>
       invoke(IPC.app.setGlobalShortcutsSuspended, suspended),
+    flushDone: (requestId) => invoke(IPC.app.flushDone, requestId),
   },
   on: {
     dataChanged: (cb) => subscribe(IPC.events.dataChanged, cb),
@@ -58,6 +59,7 @@ const api: Api = {
     newTaskRequested: (cb) => subscribe(IPC.events.newTaskRequested, () => cb()),
     settingsRequested: (cb) => subscribe(IPC.events.settingsRequested, () => cb()),
     shortcutStatusChanged: (cb) => subscribe(IPC.events.shortcutStatusChanged, cb),
+    flushRequested: (cb) => subscribe(IPC.events.flushRequested, cb),
   },
 }
 

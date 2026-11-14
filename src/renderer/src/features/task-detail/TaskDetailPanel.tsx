@@ -18,6 +18,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { MarkdownEditor } from '@/features/editor/MarkdownEditor'
+import { registerFlusher } from '@/lib/flush'
 import { cn } from '@/lib/utils'
 import { useToday } from '@/lib/useToday'
 import { useTagsById, useTask } from '@/stores/selectors'
@@ -127,11 +128,13 @@ function PanelBody({ task }: { task: Task }) {
     const onVisibility = (): void => {
       if (document.visibilityState === 'hidden') flush()
     }
+    const unregister = registerFlusher(flush) // main's hide/quit handshake
     window.addEventListener('blur', flush)
     window.addEventListener('beforeunload', flush)
     window.addEventListener('pagehide', flush)
     document.addEventListener('visibilitychange', onVisibility)
     return () => {
+      unregister()
       window.removeEventListener('blur', flush)
       window.removeEventListener('beforeunload', flush)
       window.removeEventListener('pagehide', flush)

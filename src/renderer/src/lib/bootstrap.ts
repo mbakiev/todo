@@ -4,6 +4,7 @@ import { useTagsStore } from '@/stores/tagsStore'
 import { onTempIdResolved, useTasksStore } from '@/stores/tasksStore'
 import { useUiStore } from '@/stores/uiStore'
 import { api } from './api'
+import { installFlushHandshake } from './flush'
 import { setAppInfo } from './platform'
 
 export interface BootstrapOptions {
@@ -32,6 +33,8 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<void> {
   onTempIdResolved((tempId, realId) => {
     if (useUiStore.getState().selectedTaskId === tempId) useUiStore.getState().selectTask(realId)
   })
+
+  installFlushHandshake()
 
   if (options.persistView) {
     useUiStore.setState({ activeView: useSettingsStore.getState().settings.lastView })

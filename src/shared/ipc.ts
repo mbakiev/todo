@@ -54,6 +54,7 @@ export const IPC = {
     getShortcutStatus: 'app:getShortcutStatus',
     openSettings: 'app:openSettings',
     setGlobalShortcutsSuspended: 'app:setGlobalShortcutsSuspended',
+    flushDone: 'app:flushDone',
   },
   /** main → renderer events */
   events: {
@@ -64,6 +65,7 @@ export const IPC = {
     newTaskRequested: 'event:newTaskRequested',
     settingsRequested: 'event:settingsRequested',
     shortcutStatusChanged: 'event:shortcutStatusChanged',
+    flushRequested: 'event:flushRequested',
   },
 } as const
 
@@ -131,6 +133,11 @@ export interface Api {
      * Settings shortcut recorder can capture combos that are currently registered.
      */
     setGlobalShortcutsSuspended(suspended: boolean): Promise<void>
+    /**
+     * Answers a `flushRequested` event once every pending edit has been written (the
+     * hide/quit flush handshake; main waits for this, with a timeout, before quitting).
+     */
+    flushDone(requestId: number): Promise<void>
   }
   on: {
     dataChanged(cb: (e: DataChange) => void): Unsubscribe
@@ -142,6 +149,8 @@ export interface Api {
     /** Tray/menu "Settings…". */
     settingsRequested(cb: () => void): Unsubscribe
     shortcutStatusChanged(cb: (s: ShortcutStatus) => void): Unsubscribe
+    /** Main is about to hide the window or quit: save pending edits, then call `app.flushDone`. */
+    flushRequested(cb: (requestId: number) => void): Unsubscribe
   }
 }
 

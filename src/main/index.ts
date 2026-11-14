@@ -20,6 +20,7 @@ import { installTestHook, registerGlobalShortcuts, unregisterGlobalShortcuts } f
 import { createTray, destroyTray } from './tray'
 import { createMainWindow, getMainWindow, showMainWindow } from './windows/mainWindow'
 import { createQuickAddWindow, hideQuickAdd, showQuickAdd } from './windows/quickAddWindow'
+import { requestRendererFlush } from './windows/rendererFlush'
 
 configureUserDataDir()
 
@@ -76,9 +77,17 @@ async function bootstrap(): Promise<void> {
       broadcast(IPC.events.shortcutStatusChanged, status),
   }
 
-  // Quitting must never be blocked by the hide-on-close handlers.
-  app.on('before-quit', () => {
+  // Quitting must never be blocked by the hide-on-close handlers. The first quit attempt
+  // is held until the main window has saved pending edits (bounded by a timeout).
+  let flushedForQuit = false
+  app.on('before-quit', (event) => {
     ctx.quitting = true
+    if (flushedForQuit) return
+    flushedForQuit = true
+    const win = getMainWindow()
+    if (!win) return
+    event.preventDefault()
+    void requestRendererFlush(win).then(() => app.quit())
   })
   powerMonitor.on('shutdown', () => {
     ctx.quitting = true

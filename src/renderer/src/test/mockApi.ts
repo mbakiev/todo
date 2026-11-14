@@ -34,6 +34,7 @@ export function installMockApi(
       getShortcutStatus: vi.fn(),
       openSettings: vi.fn(),
       setGlobalShortcutsSuspended: vi.fn(),
+      flushDone: vi.fn(),
       ...overrides.app,
     },
     on: {
@@ -44,6 +45,7 @@ export function installMockApi(
       newTaskRequested: vi.fn(unsub),
       settingsRequested: vi.fn(unsub),
       shortcutStatusChanged: vi.fn(unsub),
+      flushRequested: vi.fn(unsub),
       ...overrides.on,
     },
   }
