@@ -335,12 +335,15 @@ window — capture should not pull you out of what you were doing.
 - `Enter` in title (or `Cmd/Ctrl+Enter` anywhere) saves and hides. `Esc` hides and
   clears. Losing focus hides but keeps the draft.
 - New tasks always land in Not Started.
-- **Inline tokens** in the title, parsed live, shown as removable chips, and stripped
-  from the saved title:
+- **Inline tokens** in the title, parsed live and stripped from the saved title. Each value
+  is shown once: a parsed priority / due date appears in its control (changing or clearing
+  the control overrides the token); tags appear as removable chips beside the Tags control.
+  Precedence: explicit control > token > prefill > default.
   - `#word` → tag (created if new). Digits-only like `#1234` is not a tag.
   - `!low` `!med` `!high` `!crit` (also `!1`–`!4`) → priority.
   - `@today` `@tomorrow` `@fri` `@nov20` `@2026-12-01` → due date. Only consumed if it
-    parses as a date, so `@john` stays in the title.
+    parses as a date, so `@john` stays in the title. A bare weekday (`@fri`) is the next
+    occurrence strictly after today (`@today` is for today).
 
 ## 9. Desktop shell
 

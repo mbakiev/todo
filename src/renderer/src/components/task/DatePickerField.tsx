@@ -26,6 +26,8 @@ export interface DatePickerFieldProps {
   value: LocalDate | null
   onChange(value: LocalDate | null): void
   placeholder?: string
+  /** Accessible name prefix for the trigger, e.g. "Due date" → "Due date: Today". */
+  label?: string
   /** Colour the label (e.g. red when overdue). */
   tone?: 'default' | 'overdue' | 'today'
   /** Disable dates before this one (e.g. due ≥ start). */
@@ -41,6 +43,7 @@ export function DatePickerField({
   value,
   onChange,
   placeholder = 'No date',
+  label,
   tone = 'default',
   min,
   max,
@@ -71,6 +74,9 @@ export function DatePickerField({
             value && tone === 'today' && 'text-due-today',
             className,
           )}
+          aria-label={
+            label ? `${label}: ${value ? formatRelativeDate(value, today) : 'none'}` : undefined
+          }
         >
           <CalendarDays className="size-3.5" />
           {value ? formatRelativeDate(value, today) : placeholder}

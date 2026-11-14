@@ -1,9 +1,11 @@
 // Pure state model behind QuickAddForm (unit-tested in quickAddModel.test.ts).
 //
 // Precedence for each field: explicitly set control > inline token > prefill > default.
-// Removing a token chip removes the token text from the title, so it cannot be re-parsed;
-// setting a control explicitly strips the tokens of that kind for the same reason. A token
-// typed *after* a control was set is shown as overridden (the control wins).
+// The form shows each value once: priority and due date in their controls (which display the
+// parsed token value), tags as removable chips. Setting a control explicitly strips the tokens
+// of that kind from the title so they cannot be re-parsed; removing a tag chip removes its
+// token text. A token typed *after* a control was set is reported in `overridden` (the
+// control still wins).
 import { DEFAULT_PRIORITY } from '@shared/constants'
 import type { CreateTaskInput } from '@shared/ipc'
 import { removeToken, type QuickAddParseResult, type QuickAddToken } from '@shared/quickAddParser'

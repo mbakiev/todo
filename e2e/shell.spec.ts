@@ -65,10 +65,11 @@ test('quick add: tokens are parsed, the task lands in the main window, the popup
   const title = qa.getByRole('textbox', { name: 'Task title' })
   await expect(title).toBeFocused()
   await title.fill('Email the plumber #home !high @today')
-  const chips = qa.getByTestId('quick-add-chips')
-  await expect(chips).toContainText('High')
-  await expect(chips).toContainText('Today')
-  await expect(chips).toContainText('home')
+  // Each parsed value shows once: priority and due date in their controls, tags as chips.
+  await expect(qa.getByRole('button', { name: 'Priority: High' })).toBeVisible()
+  await expect(qa.getByRole('button', { name: 'Due date: Today' })).toBeVisible()
+  await expect(qa.getByTestId('quick-add-tags')).toHaveText('home')
+  await expect(qa.getByText('High', { exact: true })).toHaveCount(1)
   await title.press('Enter')
 
   await expect.poll(() => windowVisible(app, 'quick-add')).toBe(false)
@@ -95,21 +96,21 @@ test('quick add: tokens are parsed, the task lands in the main window, the popup
   await expect(again.getByRole('textbox', { name: 'Task title' })).toHaveValue('')
 })
 
-test('quick add: removing a chip removes its token; blur keeps the draft, Esc clears', async () => {
+test('quick add: controls override tokens, tag chips remove theirs; blur keeps the draft, Esc clears', async () => {
   shell = await launchShell()
   const { app } = shell
   const qa = await openQuickAdd(app)
   const title = qa.getByRole('textbox', { name: 'Task title' })
-  await title.fill('Ping @john about #ops !low')
-  await qa.getByRole('button', { name: 'Remove priority token' }).click()
-  await expect(title).toHaveValue('Ping @john about #ops')
+  await title.fill('Ping @john about #ops')
 
-  // Focus moves elsewhere → popup hides but keeps the draft.
-  await app.evaluate(({ BrowserWindow }) =>
+  // Focus moves elsewhere → popup hides but keeps the draft. macOS only delivers real focus
+  // changes while the app is frontmost, which a test run cannot guarantee, so the window's
+  // blur is emitted directly.
+  await app.evaluate(({ BrowserWindow }) => {
     BrowserWindow.getAllWindows()
-      .find((w) => w.webContents.getURL().endsWith('index.html'))
-      ?.focus(),
-  )
+      .find((w) => w.webContents.getURL().endsWith('quick-add.html'))
+      ?.emit('blur')
+  })
   await expect.poll(() => windowVisible(app, 'quick-add')).toBe(false)
   await openQuickAdd(app)
   await expect(title).toHaveValue('Ping @john about #ops')
@@ -118,6 +119,22 @@ test('quick add: removing a chip removes its token; blur keeps the draft, Esc cl
   await expect.poll(() => windowVisible(app, 'quick-add')).toBe(false)
   await openQuickAdd(app)
   await expect(title).toHaveValue('')
+
+  await title.fill('Ping @john about #ops !low @tomorrow')
+  await expect(qa.getByRole('button', { name: 'Priority: Low' })).toBeVisible()
+  // Changing the control is the override: the token leaves the title.
+  await qa.getByRole('button', { name: 'Priority: Low' }).click()
+  await qa.getByRole('menuitem', { name: /High$/ }).click()
+  await expect(title).toHaveValue('Ping @john about #ops @tomorrow')
+  await expect(qa.getByRole('button', { name: 'Priority: High' })).toBeVisible()
+  // Clearing the due date there removes the @date token.
+  await qa.getByRole('button', { name: 'Due date: Tomorrow' }).click()
+  await qa.getByRole('button', { name: 'Clear' }).click()
+  await expect(title).toHaveValue('Ping @john about #ops')
+  await expect(qa.getByRole('button', { name: 'Due date: none' })).toBeVisible()
+  // A tag chip's × removes its token.
+  await qa.getByTestId('quick-add-tags').getByRole('button').click()
+  await expect(title).toHaveValue('Ping @john about')
 })
 
 test('in-app new-task dialog (Cmd/Ctrl+N) creates a task, and "create more" keeps it open', async () => {

@@ -1,7 +1,7 @@
 // Quick-add form (spec §8), shared by the global popup window and the in-app NewTaskDialog.
-// Title with live inline tokens (#tag !priority @date) shown as removable chips, an
-// optional plain-text (Markdown) description, and a compact row of controls.
-import { CalendarDays, CornerDownLeft, X } from 'lucide-react'
+// Title with live inline tokens (#tag !priority @date) reflected in the controls below (tags
+// as removable chips), an optional plain-text (Markdown) description.
+import { CornerDownLeft } from 'lucide-react'
 import {
   useCallback,
   useEffect,
@@ -12,17 +12,10 @@ import {
   type ReactNode,
 } from 'react'
 import { toast } from 'sonner'
-import { MAX_TITLE_LENGTH, PRIORITY_LABELS, STATUS_LABELS } from '@shared/constants'
-import { formatRelativeDate } from '@shared/dates'
+import { MAX_TITLE_LENGTH, STATUS_LABELS } from '@shared/constants'
 import { parseQuickAdd } from '@shared/quickAddParser'
 import type { LocalDate, Priority } from '@shared/types'
-import {
-  DatePickerField,
-  PriorityIcon,
-  PrioritySelect,
-  TagChip,
-  TagPicker,
-} from '@/components/task'
+import { DatePickerField, PrioritySelect, TagChip, TagPicker } from '@/components/task'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { api } from '@/lib/api'
@@ -60,40 +53,6 @@ function Kbd({ children }: { children: ReactNode }) {
     <kbd className="inline-flex h-4 min-w-4 items-center justify-center rounded-[3px] border border-border bg-background px-1 font-sans text-[10px] leading-none text-muted-foreground">
       {children}
     </kbd>
-  )
-}
-
-function Chip({
-  children,
-  onRemove,
-  removeLabel,
-  muted,
-  title,
-}: {
-  children: ReactNode
-  onRemove(): void
-  removeLabel: string
-  muted?: boolean
-  title?: string
-}) {
-  return (
-    <span
-      title={title}
-      className={cn(
-        'inline-flex h-[18px] items-center gap-1 rounded-sm bg-muted px-1.5 text-[11px] font-medium text-foreground/80',
-        muted && 'line-through opacity-50',
-      )}
-    >
-      {children}
-      <button
-        type="button"
-        aria-label={removeLabel}
-        className="-mr-1 rounded-sm p-0.5 opacity-60 hover:opacity-100"
-        onClick={onRemove}
-      >
-        <X className="size-3" />
-      </button>
-    </span>
   )
 }
 
@@ -222,11 +181,6 @@ export function QuickAddForm({
     .map((id) => tagsById[id])
     .filter((t) => t !== undefined)
     .filter((t) => !resolved.tokenTags.some((tt) => tt.tag?.id === t.id))
-  const hasChips =
-    parsed.priority !== null ||
-    parsed.dueDate !== null ||
-    resolved.tokenTags.length > 0 ||
-    pickedOnly.length > 0
 
   const dueTone =
     resolved.dueDate && resolved.dueDate < today
@@ -267,38 +221,51 @@ export function QuickAddForm({
           onChange={(e) => update({ description: e.target.value })}
           className="field-sizing-content max-h-40 min-h-5 w-full resize-none bg-transparent text-[13px] leading-5 text-foreground/90 outline-none placeholder:text-muted-foreground/60"
         />
-        {hasChips && (
-          <div className="flex flex-wrap items-center gap-1.5 pt-1" data-testid="quick-add-chips">
-            {parsed.priority !== null && (
-              <Chip
-                removeLabel="Remove priority token"
-                muted={resolved.overridden.priority}
-                title={
-                  resolved.overridden.priority ? 'Overridden by the priority picker' : undefined
-                }
-                onRemove={() =>
-                  update({ text: removeTokens(draft.text, parsed, (t) => t.kind === 'priority') })
-                }
-              >
-                <PriorityIcon priority={parsed.priority} className="size-3" />
-                {PRIORITY_LABELS[parsed.priority]}
-              </Chip>
-            )}
-            {parsed.dueDate !== null && (
-              <Chip
-                removeLabel="Remove due date token"
-                muted={resolved.overridden.due}
-                title={resolved.overridden.due ? 'Overridden by the due date picker' : undefined}
-                onRemove={() =>
-                  update({ text: removeTokens(draft.text, parsed, (t) => t.kind === 'due') })
-                }
-              >
-                <CalendarDays className="size-3" />
-                {formatRelativeDate(parsed.dueDate, today)}
-              </Chip>
-            )}
+      </div>
+
+      {/* Each value shows once: parsed !priority / @date live in their controls (changing or
+          clearing a control is the override), tags are chips beside the Tags control. */}
+      <div
+        className={cn(
+          'flex flex-wrap items-center gap-0.5 px-2.5',
+          isWindow ? 'pt-2 pb-2' : 'pt-3 pb-2',
+        )}
+      >
+        <span
+          className="contents"
+          title={
+            resolved.overridden.priority
+              ? 'Set here; overrides the !priority in the title'
+              : undefined
+          }
+        >
+          <PrioritySelect value={resolved.priority} onChange={setPriority} />
+        </span>
+        <DatePickerField
+          value={resolved.dueDate}
+          onChange={setDue}
+          placeholder="Due date"
+          label="Due date"
+          tone={dueTone}
+          min={resolved.startDate}
+        />
+        {!isWindow && (
+          <DatePickerField
+            value={resolved.startDate}
+            onChange={(v) => update({ explicitStart: v })}
+            placeholder="Start date"
+            label="Start date"
+            max={resolved.dueDate}
+          />
+        )}
+        <TagPicker value={draft.pickedTagIds} onChange={(ids) => update({ pickedTagIds: ids })} />
+        {(resolved.tokenTags.length > 0 || pickedOnly.length > 0) && (
+          <div
+            className="flex min-w-0 flex-wrap items-center gap-1 pl-0.5"
+            data-testid="quick-add-tags"
+          >
             {resolved.tokenTags.map(({ name, tag }) => (
-              <span key={name.toLowerCase()} title={tag ? undefined : 'New tag — created on save'}>
+              <span key={name.toLowerCase()} title={tag ? undefined : 'New tag, created on save'}>
                 <TagChip
                   tag={{ name, color: tag?.color ?? 'slate' }}
                   className={cn(!tag && 'outline-1 outline-muted-foreground/40 outline-dashed')}
@@ -317,26 +284,6 @@ export function QuickAddForm({
             ))}
           </div>
         )}
-      </div>
-
-      <div className={cn('flex items-center gap-0.5 px-2.5', isWindow ? 'pt-2 pb-2' : 'pt-3 pb-2')}>
-        <PrioritySelect value={resolved.priority} onChange={setPriority} />
-        <DatePickerField
-          value={resolved.dueDate}
-          onChange={setDue}
-          placeholder="Due date"
-          tone={dueTone}
-          min={resolved.startDate}
-        />
-        {!isWindow && (
-          <DatePickerField
-            value={resolved.startDate}
-            onChange={(v) => update({ explicitStart: v })}
-            placeholder="Start date"
-            max={resolved.dueDate}
-          />
-        )}
-        <TagPicker value={draft.pickedTagIds} onChange={(ids) => update({ pickedTagIds: ids })} />
         <div className="flex-1" />
         {isWindow ? (
           <Button
