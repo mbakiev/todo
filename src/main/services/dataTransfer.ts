@@ -8,6 +8,7 @@ import { exportFileSchema } from '@shared/schemas'
 import type { ExportFile, ImportResult, Tag, Task } from '@shared/types'
 import type { Repos } from '../db'
 import { createImportRepo } from '../db/importRepo'
+import { takeBackup } from './backup'
 
 export class ImportError extends Error {
   constructor(message: string) {
@@ -205,6 +206,31 @@ function mergeTags(
     result.tagsAdded++
   }
   return tagIdMap
+}
+
+/**
+ * A full import: a `todos-preimport-…` safety copy first (both modes — a merge can overwrite
+ * local tasks too), then applyImport. The copy is skipped only when the local DB has no tasks
+ * at all (nothing to lose). It is taken outside the transaction: VACUUM INTO cannot run
+ * inside one. Returns the counts (+ backup path) and the broadcast for the windows.
+ */
+export function runImport(
+  repos: Repos,
+  backupsDir: string,
+  file: ExportFile,
+  mode: 'merge' | 'replace',
+): { result: ImportResult; broadcast: ReturnType<typeof importBroadcast> } {
+  const before = {
+    taskIds: repos.tasks.list().map((t) => t.id),
+    tagIds: repos.tags.list().map((t) => t.id),
+  }
+  const backupPath =
+    repos.tasks.countAll() > 0 ? takeBackup(repos.db, backupsDir, { kind: 'preimport' }) : undefined
+  const counts = applyImport(repos, file, mode)
+  return {
+    result: backupPath ? { ...counts, backupPath } : counts,
+    broadcast: importBroadcast(before, repos),
+  }
 }
 
 /** Everything a window needs to resync after an import. */

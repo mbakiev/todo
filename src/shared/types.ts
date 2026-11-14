@@ -85,7 +85,7 @@ export interface ImportResult {
   tasksSkipped: number
   tagsAdded: number
   tagsUpdated: number
-  /** Backup taken before a replace import. */
+  /** Safety copy taken before the import (absent when the local DB had no tasks). */
   backupPath?: string
 }
 

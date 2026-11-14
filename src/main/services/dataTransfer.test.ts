@@ -1,7 +1,17 @@
 import { EXPORT_APP_ID } from '@shared/constants'
 import type { ExportFile, Tag, Task } from '@shared/types'
 import { openDatabase, type Repos } from '../db'
-import { applyImport, buildExport, importBroadcast, parseExportFile } from './dataTransfer'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { listBackups } from './backup'
+import {
+  applyImport,
+  buildExport,
+  importBroadcast,
+  parseExportFile,
+  runImport,
+} from './dataTransfer'
 
 let clock = 1_000_000
 const now = () => clock
@@ -269,5 +279,35 @@ describe('applyImport — replace', () => {
     r.db.exec('DELETE FROM task_tags; DELETE FROM tasks; DELETE FROM tags;')
     applyImport(r, parseExportFile(JSON.stringify(exported)), 'replace')
     expect(buildExport(r, exported.exportedAt)).toEqual(exported)
+  })
+})
+
+describe('runImport safety copy', () => {
+  let dir: string
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'mt-import-'))
+  })
+  afterEach(() => rmSync(dir, { recursive: true, force: true }))
+
+  for (const mode of ['merge', 'replace'] as const) {
+    it(`${mode}: takes a pre-import backup of the current data first`, () => {
+      r.tasks.create({ title: 'local work' })
+      const { result, broadcast } = runImport(r, dir, file([task({ id: 'f1' })]), mode)
+      const backups = listBackups(dir)
+      expect(backups.map((b) => b.kind)).toEqual(['preimport'])
+      expect(result.backupPath).toBe(backups[0]?.path)
+      expect(broadcast.authoritative).toBe(true)
+      // The copy holds the data as it was before the import.
+      const snap = openDatabase({ path: backups[0]?.path ?? '' })
+      expect(snap.tasks.list().map((t) => t.title)).toEqual(['local work'])
+      snap.db.close()
+    })
+  }
+
+  it('skips the copy when the local database has no tasks', () => {
+    const { result } = runImport(r, dir, file([task({ id: 'f1' })]), 'merge')
+    expect(result.backupPath).toBeUndefined()
+    expect(listBackups(dir)).toHaveLength(0)
+    expect(r.tasks.get('f1')).toBeDefined()
   })
 })

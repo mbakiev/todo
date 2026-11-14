@@ -51,10 +51,11 @@ or restore the newest backup (the unreadable file is kept as `todos.db.broken-<t
 
 - A snapshot is taken at startup and every 24 h (newest 14 kept; skipped while the database
   has no tasks at all). "Back up now" copies are kept separately (newest 10), as are the
-  safety copies taken before **Replace all** (newest 5), so neither can push out the daily
+  safety copies taken before every import (newest 5), so neither can push out the daily
   history.
 - **Export** writes one JSON file with all tasks and tags.
-- **Import** a JSON export: **Merge** (newer edit wins) or **Replace all** (backs up first).
+- **Import** a JSON export: **Merge** (newer edit wins) or **Replace all**; both back up the
+  current data first.
 
 ## Development
 

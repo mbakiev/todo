@@ -6,8 +6,7 @@ import { join } from 'node:path'
 import { app, BrowserWindow, dialog } from 'electron'
 import type { ImportResult } from '@shared/types'
 import type { AppContext } from '../context'
-import { takeBackup } from './backup'
-import { applyImport, buildExport, importBroadcast, parseExportFile } from './dataTransfer'
+import { buildExport, parseExportFile, runImport } from './dataTransfer'
 
 const MAX_IMPORT_BYTES = 200 * 1024 * 1024
 
@@ -56,16 +55,7 @@ export async function importFromFile(
   if (buf.byteLength > MAX_IMPORT_BYTES) throw new Error('The file is too large to import.')
   const file = parseExportFile(buf.toString('utf8'))
 
-  const before = {
-    taskIds: ctx.repos.tasks.list().map((t) => t.id),
-    tagIds: ctx.repos.tags.list().map((t) => t.id),
-  }
-  // Replace: snapshot first (outside the transaction — VACUUM INTO cannot run inside one).
-  const backupPath =
-    mode === 'replace'
-      ? takeBackup(ctx.repos.db, ctx.paths.backupsDir, { kind: 'preimport' })
-      : undefined
-  const counts = applyImport(ctx.repos, file, mode)
-  ctx.broadcastDataChanged(importBroadcast(before, ctx.repos))
-  return backupPath ? { ...counts, backupPath } : counts
+  const { result, broadcast } = runImport(ctx.repos, ctx.paths.backupsDir, file, mode)
+  ctx.broadcastDataChanged(broadcast)
+  return result
 }

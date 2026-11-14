@@ -404,7 +404,7 @@ Stored in the `settings` table; defaults in `shared/constants.ts`.
   |---|---|---|
   | Automatic: at startup (skipped if one is < 1 h old) and every 24 h | `todos-YYYYMMDD-HHmmss.db` | newest 14 |
   | Manual: "Back up now" | `todos-manual-YYYYMMDD-HHmmss.db` | newest 10 |
-  | Safety copy before **Replace all** import | `todos-preimport-YYYYMMDD-HHmmss.db` | newest 5 |
+  | Safety copy before every import (Merge and Replace all; skipped when the DB has no tasks) | `todos-preimport-YYYYMMDD-HHmmss.db` | newest 5 |
 
   No automatic snapshot is taken while the database has zero tasks (soft-deleted included),
   so an accidental wipe cannot rotate out good history. Deleting an old backup is
@@ -414,8 +414,8 @@ Stored in the `settings` table; defaults in `shared/constants.ts`.
   via a save dialog.
 - **Import**: open dialog → zod-validate → **Merge** (upsert by id; the record with the
   newer `updatedAt` wins; tags: all id matches first, then name matches only against local
-  tags no id match claimed, then the rest are created) or **Replace all** (takes a
-  pre-import backup first). Runs in one transaction; returns counts. A leading UTF-8 BOM
+  tags no id match claimed, then the rest are created) or **Replace all**. Both take a
+  pre-import backup first (unless the local DB has no tasks). Runs in one transaction; returns counts. A leading UTF-8 BOM
   is accepted.
 
 ### Startup problems

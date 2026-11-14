@@ -152,7 +152,7 @@ export function DataSection() {
             <b className="font-medium text-foreground/80">Merge</b> adds new tasks and keeps the
             newer copy of tasks you already have.{' '}
             <b className="font-medium text-foreground/80">Replace all</b> swaps everything for the
-            file’s contents.
+            file’s contents. Either way, a backup of the current data is taken first.
           </>
         }
         outcome={forArea('import')}
