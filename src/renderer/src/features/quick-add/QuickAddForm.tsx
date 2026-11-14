@@ -211,7 +211,11 @@ export function QuickAddForm({
         : 'default'
 
   return (
-    <div className="flex flex-col" onKeyDown={onRootKeyDown} data-testid="quick-add-form">
+    <div
+      className={cn('flex flex-col', isWindow && 'min-h-screen')}
+      onKeyDown={onRootKeyDown}
+      data-testid="quick-add-form"
+    >
       <div className={cn('flex flex-col gap-1', isWindow ? 'px-4 pt-3.5' : 'px-4 pt-4')}>
         {!isWindow && (
           <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
@@ -330,7 +334,13 @@ export function QuickAddForm({
         </div>
       </div>
 
-      <div className="flex items-center gap-3 border-t bg-muted/40 px-4 py-1.5 text-[11px] text-muted-foreground">
+      {/* Popup: when the window grows for a picker popover, the hint bar stays at its bottom
+          edge (QuickAddWindow measures the content without this spacer). */}
+      {isWindow && <div className="flex-1" data-quick-add-spacer />}
+      <div
+        className="flex items-center gap-3 border-t bg-muted/40 px-4 py-1.5 text-[11px] text-muted-foreground"
+        data-quick-add-hints
+      >
         <span className="truncate">
           Inline: <span className="font-mono text-foreground/70">#tag</span>{' '}
           <span className="font-mono text-foreground/70">!high</span>{' '}

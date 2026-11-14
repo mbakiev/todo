@@ -137,6 +137,64 @@ test('quick add: controls override tokens, tag chips remove theirs; blur keeps t
   await expect(title).toHaveValue('Ping @john about')
 })
 
+// Runs in the quick-add renderer (plain JS: the e2e tsconfig has no DOM lib). Records, every
+// frame, whether a popover is painted and on which side, and where the hint bar sits.
+const RECORD_FRAMES = `(() => {
+  window.__frames = []
+  const tick = () => {
+    const w = document.querySelector('[data-radix-popper-content-wrapper]')
+    const hints = document.querySelector('[data-quick-add-hints]').getBoundingClientRect()
+    window.__frames.push({
+      open: !!w,
+      painted: !!w && getComputedStyle(w).visibility !== 'hidden',
+      side: w ? (w.firstElementChild && w.firstElementChild.getAttribute('data-side')) : null,
+      hintsBottom: hints.bottom,
+      innerHeight: window.innerHeight,
+    })
+    if (window.__frames.length < 600) requestAnimationFrame(tick)
+  }
+  requestAnimationFrame(tick)
+})()`
+
+test('quick add: a picker popover opens downward without a flip; the hint bar stays at the bottom', async () => {
+  shell = await launchShell()
+  const qa = await openQuickAdd(shell.app)
+  type Frame = {
+    open: boolean
+    painted: boolean
+    side: string | null
+    hintsBottom: number
+    innerHeight: number
+  }
+  const frames = async (): Promise<Frame[]> => (await qa.evaluate('window.__frames')) as Frame[]
+  await qa.evaluate(RECORD_FRAMES)
+  const trigger = qa.getByRole('button', { name: /^Due date/ })
+  await trigger.click()
+  await expect(qa.locator('[data-radix-popper-content-wrapper]')).toBeVisible()
+  await qa.waitForTimeout(700)
+  const f = await frames()
+  const painted = f.filter((x) => x.painted)
+  expect(painted.length).toBeGreaterThan(0)
+  // Never painted on the top side (no visible flip).
+  expect(painted.filter((x) => x.side !== 'bottom')).toEqual([])
+  // Settled: hint bar on the window's bottom edge, popover below the trigger.
+  const settled = f[f.length - 1] as Frame
+  expect(Math.abs(settled.hintsBottom - settled.innerHeight)).toBeLessThanOrEqual(1)
+  const t = await trigger.boundingBox()
+  const pop = await qa.locator('[data-radix-popper-content-wrapper]').boundingBox()
+  expect(pop && t && pop.y >= t.y + t.height).toBe(true)
+  // The hint bar is below the popover, not covered by it.
+  expect(pop && pop.y + pop.height <= settled.hintsBottom - 20).toBe(true)
+
+  // Closing the popover shrinks the window back; the hint bar is still at the bottom.
+  await qa.keyboard.press('Escape')
+  await expect(qa.locator('[data-radix-popper-content-wrapper]')).toHaveCount(0)
+  await qa.waitForTimeout(400)
+  const after = (await frames()).at(-1) as Frame
+  expect(after.innerHeight).toBeLessThan(settled.innerHeight)
+  expect(Math.abs(after.hintsBottom - after.innerHeight)).toBeLessThanOrEqual(1)
+})
+
 test('in-app new-task dialog (Cmd/Ctrl+N) creates a task, and "create more" keeps it open', async () => {
   shell = await launchShell()
   const { page } = shell

@@ -277,3 +277,9 @@
     scrollbar-width: thin;
   }
 }
+
+/* Quick-add popup: a picker popover stays invisible while the window grows to make room for it
+   below its trigger (QuickAddWindow.tsx), so it never shows squeezed or flipped upward. */
+html[data-quick-add-sizing] [data-radix-popper-content-wrapper] {
+  visibility: hidden !important;
+}
