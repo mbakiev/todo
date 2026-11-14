@@ -71,6 +71,11 @@ export interface DataChange {
   /** Upserted tags. */
   tags?: Tag[]
   removedTagIds?: string[]
+  /**
+   * The records are authoritative even if older than what a window holds (an import can
+   * write older versions). Otherwise a task broadcast older than the local copy is stale.
+   */
+  authoritative?: boolean
 }
 
 export interface ImportResult {

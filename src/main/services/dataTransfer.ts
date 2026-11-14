@@ -211,7 +211,13 @@ function mergeTags(
 export function importBroadcast(
   before: { taskIds: string[]; tagIds: string[] },
   repos: Repos,
-): { upsertedTasks: Task[]; removedTaskIds: string[]; tags: Tag[]; removedTagIds: string[] } {
+): {
+  upsertedTasks: Task[]
+  removedTaskIds: string[]
+  tags: Tag[]
+  removedTagIds: string[]
+  authoritative: true
+} {
   const tasks = repos.tasks.list()
   const tags = repos.tags.list()
   const taskIds = new Set(tasks.map((t) => t.id))
@@ -221,5 +227,6 @@ export function importBroadcast(
     removedTaskIds: before.taskIds.filter((id) => !taskIds.has(id)),
     tags,
     removedTagIds: before.tagIds.filter((id) => !tagIds.has(id)),
+    authoritative: true,
   }
 }

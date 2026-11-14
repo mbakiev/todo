@@ -111,6 +111,18 @@ describe('tasksRepo.create', () => {
 })
 
 describe('tasksRepo.update', () => {
+  it('updatedAt strictly increases per task, even within one millisecond', () => {
+    const { task } = r.tasks.create({ title: 'same ms' })
+    const a = r.tasks.update(task.id, { title: 'one' })
+    const b = r.tasks.update(task.id, { title: 'two' })
+    const c = r.tasks.move(task.id, { beforeId: null, afterId: null })
+    expect(a.updatedAt).toBeGreaterThan(task.updatedAt)
+    expect(b.updatedAt).toBeGreaterThan(a.updatedAt)
+    expect(c.task.updatedAt).toBeGreaterThan(b.updatedAt)
+    r.tasks.softDelete(task.id)
+    expect(r.tasks.restore(task.id).updatedAt).toBeGreaterThan(c.task.updatedAt + 1)
+  })
+
   it('bumps updatedAt and maintains completedAt', () => {
     const { task } = r.tasks.create({ title: 'x' })
     clock += 10

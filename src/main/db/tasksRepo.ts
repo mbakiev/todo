@@ -172,6 +172,14 @@ export function createTasksRepo(db: Db, tags: TagsRepo, now: () => number = Date
     return changed
   }
 
+  /**
+   * `updated_at` for a write to `existing`: strictly increasing per task even within one
+   * millisecond, so renderers can order a task's versions by it (see tasksStore).
+   */
+  function nextStamp(existing: Task): number {
+    return Math.max(now(), existing.updatedAt + 1)
+  }
+
   const repo: TasksRepo = {
     list() {
       const rows = db.all<TaskRow>('SELECT * FROM tasks WHERE deleted_at IS NULL ORDER BY position')
@@ -240,7 +248,7 @@ export function createTasksRepo(db: Db, tags: TagsRepo, now: () => number = Date
         if (patch.dueDate !== undefined) next.dueDate = patch.dueDate
         assertDates(next.startDate, next.dueDate)
 
-        const ts = now()
+        const ts = nextStamp(existing)
         if (patch.status !== undefined && patch.status !== existing.status) {
           next.status = patch.status
           next.completedAt = patch.status === 'done' ? ts : null
@@ -297,7 +305,7 @@ export function createTasksRepo(db: Db, tags: TagsRepo, now: () => number = Date
           after = neighbour(input.afterId)
         }
         const position = positionBetween(before, after)
-        const ts = now()
+        const ts = nextStamp(existing)
         const completedAt =
           status === existing.status ? existing.completedAt : status === 'done' ? ts : null
         db.run(
@@ -312,7 +320,7 @@ export function createTasksRepo(db: Db, tags: TagsRepo, now: () => number = Date
     softDelete(id) {
       const ts = now()
       const { changes } = db.run(
-        'UPDATE tasks SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL',
+        'UPDATE tasks SET deleted_at = ?, updated_at = MAX(?, updated_at + 1) WHERE id = ? AND deleted_at IS NULL',
         [ts, ts, id],
       )
       if (changes === 0) throw notFound('Task', id)
@@ -320,7 +328,7 @@ export function createTasksRepo(db: Db, tags: TagsRepo, now: () => number = Date
 
     restore(id) {
       const { changes } = db.run(
-        'UPDATE tasks SET deleted_at = NULL, updated_at = ? WHERE id = ? AND deleted_at IS NOT NULL',
+        'UPDATE tasks SET deleted_at = NULL, updated_at = MAX(?, updated_at + 1) WHERE id = ? AND deleted_at IS NOT NULL',
         [now(), id],
       )
       if (changes === 0) {

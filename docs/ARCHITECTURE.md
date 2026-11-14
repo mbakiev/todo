@@ -225,6 +225,15 @@ Sync model: after every successful mutation the main process broadcasts `dataCha
 with the returned record; on error it rolls back and shows a toast. This is what keeps
 the quick-add window and the main window in sync.
 
+Optimistic bookkeeping (tasks, tags, settings stores): while writes to a record are in
+flight, the store keeps the newest server-confirmed copy and replays the pending patches on
+top of it. A broadcast or result therefore never reverts a field a still-pending write set,
+and a failed write reverts only its own fields, to the newest server copy (never to a
+pre-write snapshot). When the last pending write settles, the record equals the server copy.
+Task `updated_at` is strictly increasing per task (main bumps it by ≥ 1 ms per write), so
+an older task broadcast is recognised as stale and ignored — except an import's broadcast,
+which is marked `authoritative` (imports may write older versions).
+
 ## 6. Views
 
 All filter logic lives in `src/shared/views.ts` as pure functions taking

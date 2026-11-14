@@ -1,6 +1,14 @@
-// Renderer copy of all non-deleted tasks. Main is the source of truth; this store applies
-// optimistic updates, reconciles with returned records, rolls back on error (with a toast),
-// and applies `dataChanged` broadcasts idempotently (upsert by id).
+// Renderer copy of all non-deleted tasks. Main is the source of truth.
+//
+// Optimistic writes, per task: while any write to a task is in flight, the store keeps the
+// last server-confirmed copy (`sync[id].base`, from invoke results and broadcasts) plus the
+// list of local operations still awaiting main. What the UI sees (`byId`) is always
+// `base` with the pending operations replayed on top, in issue order. So:
+// - a broadcast or result for one write never reverts a field another pending write set
+//   (it only moves `base` forward — task `updatedAt` is strictly increasing per task);
+// - a failed write simply drops out of the replay: only its own fields revert, and only to
+//   the newest server copy, never to a stale pre-write snapshot;
+// - when the last pending write settles, `byId` becomes exactly the server copy.
 
 import { toast } from 'sonner'
 import { create } from 'zustand'
@@ -11,11 +19,25 @@ import type { DataChange, Task } from '@shared/types'
 import { api } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
 
+/** A local write to one task that main has not answered yet. */
+export type PendingOp =
+  | { seq: number; kind: 'patch'; values: Partial<Task> }
+  | { seq: number; kind: 'delete' }
+  | { seq: number; kind: 'restore'; task: Task | null }
+
+export interface TaskSync {
+  /** Newest server-confirmed copy; null = deleted on the server (or unknown). */
+  base: Task | null
+  ops: PendingOp[]
+}
+
 export interface TasksState {
   byId: Record<string, Task>
   loaded: boolean
-  /** Ids with a mutation in flight (count), used to ignore stale broadcasts. */
+  /** Ids with a mutation in flight (count). */
   pending: Record<string, number>
+  /** Per-task optimistic bookkeeping while writes are in flight (see file header). */
+  sync: Record<string, TaskSync>
 
   load(): Promise<void>
   /** Optimistic create (temp id until the server responds). Resolves to the real task or null on error. */
@@ -60,17 +82,78 @@ function fail(action: string, err: unknown): void {
   toast.error(`Couldn't ${action}`, { description: errorMessage(err) })
 }
 
+let nextSeq = 1
+
+/** `base` with the pending operations replayed on top. */
+export function replay(base: Task | null, ops: readonly PendingOp[]): Task | null {
+  let t = base
+  for (const op of ops) {
+    if (op.kind === 'patch') t = t ? { ...t, ...op.values } : t
+    else if (op.kind === 'delete') t = null
+    else t = t ?? op.task
+  }
+  return t
+}
+
+/** A server copy replaces `base` unless it is older (stale broadcast / out-of-order result). */
+function newer(base: Task | null, incoming: Task): boolean {
+  return base === null || incoming.updatedAt >= base.updatedAt
+}
+
+type Server = { task: Task } | { deleted: true } | null
+
 export const useTasksStore = create<TasksState>()((set, get) => {
-  const begin = (id: string): void =>
-    set((s) => ({ pending: { ...s.pending, [id]: (s.pending[id] ?? 0) + 1 } }))
-  const end = (id: string): void =>
+  /** Writes `task` (or its absence) into byId. */
+  const show = (byId: Record<string, Task>, id: string, task: Task | null): void => {
+    if (task) byId[id] = task
+    else delete byId[id]
+  }
+
+  /** Starts a pending op on `id`; the display updates immediately. */
+  const begin = (id: string, op: PendingOp): void =>
     set((s) => {
-      const n = (s.pending[id] ?? 1) - 1
-      const pending = { ...s.pending }
-      if (n <= 0) delete pending[id]
-      else pending[id] = n
-      return { pending }
+      const cur = s.sync[id] ?? { base: s.byId[id] ?? null, ops: [] }
+      const entry: TaskSync = { base: cur.base, ops: [...cur.ops, op] }
+      const byId = { ...s.byId }
+      show(byId, id, replay(entry.base, entry.ops))
+      return {
+        byId,
+        sync: { ...s.sync, [id]: entry },
+        pending: { ...s.pending, [id]: entry.ops.length },
+      }
     })
+
+  /** Ends op `seq` on `id`, folding in the server's answer (null = the write failed). */
+  const settle = (id: string, seq: number, server: Server): void =>
+    set((s) => {
+      const cur = s.sync[id]
+      if (!cur) {
+        // Bookkeeping was reset underneath us (tests / reload): just apply the answer.
+        if (!server) return s
+        const byId = { ...s.byId }
+        show(byId, id, 'task' in server ? server.task : null)
+        return { byId }
+      }
+      let base = cur.base
+      if (server && 'task' in server && newer(base, server.task)) base = server.task
+      if (server && 'deleted' in server) base = null
+      const ops = cur.ops.filter((o) => o.seq !== seq)
+      const byId = { ...s.byId }
+      const sync = { ...s.sync }
+      const pending = { ...s.pending }
+      if (ops.length === 0) {
+        // Last pending write settled: reconcile fully with the server copy.
+        show(byId, id, base)
+        delete sync[id]
+        delete pending[id]
+      } else {
+        show(byId, id, replay(base, ops))
+        sync[id] = { base, ops }
+        pending[id] = ops.length
+      }
+      return { byId, sync, pending }
+    })
+
   const put = (task: Task): void => set((s) => ({ byId: { ...s.byId, [task.id]: task } }))
   const drop = (id: string): void =>
     set((s) => {
@@ -84,6 +167,7 @@ export const useTasksStore = create<TasksState>()((set, get) => {
     byId: {},
     loaded: false,
     pending: {},
+    sync: {},
 
     async load() {
       const tasks = await api().tasks.list()
@@ -115,7 +199,9 @@ export const useTasksStore = create<TasksState>()((set, get) => {
       try {
         const task = await track(api().tasks.create(input))
         drop(tempId)
-        put(task)
+        // A broadcast may already have delivered (and a later write updated) the real task.
+        const known = get().byId[task.id]
+        if (!known || task.updatedAt >= known.updatedAt) put(task)
         for (const cb of tempResolvedListeners) cb(tempId, task.id)
         return task
       } catch (err) {
@@ -133,26 +219,24 @@ export const useTasksStore = create<TasksState>()((set, get) => {
         return null
       }
       const now = Date.now()
-      const next: Task = { ...prev, ...stripUndefined(patch), updatedAt: now } as Task
+      const values: Partial<Task> = { ...stripUndefined(patch), updatedAt: now } as Partial<Task>
       if (patch.status !== undefined && patch.status !== prev.status) {
-        next.completedAt = patch.status === 'done' ? now : null
+        values.completedAt = patch.status === 'done' ? now : null
         if (patch.position === undefined) {
           const column = Object.values(get().byId).filter(
             (t) => t.status === patch.status && t.id !== id,
           )
-          next.position = topPosition(column.map((t) => t.position))
+          values.position = topPosition(column.map((t) => t.position))
         }
       }
-      put(next)
-      begin(id)
+      const seq = nextSeq++
+      begin(id, { seq, kind: 'patch', values })
       try {
         const task = await track(api().tasks.update(id, patch))
-        end(id)
-        if ((get().pending[id] ?? 0) === 0) put(task)
+        settle(id, seq, { task })
         return task
       } catch (err) {
-        end(id)
-        put(prev)
+        settle(id, seq, null)
         fail('update task', err)
         return null
       }
@@ -166,23 +250,20 @@ export const useTasksStore = create<TasksState>()((set, get) => {
       const before = input.beforeId ? (byId[input.beforeId]?.position ?? null) : null
       const after = input.afterId ? (byId[input.afterId]?.position ?? null) : null
       const now = Date.now()
-      const next: Task = {
-        ...prev,
+      const values: Partial<Task> = {
         status,
         position: positionBetween(before, after),
         updatedAt: now,
         completedAt: status === prev.status ? prev.completedAt : status === 'done' ? now : null,
       }
-      put(next)
-      begin(id)
+      const seq = nextSeq++
+      begin(id, { seq, kind: 'patch', values })
       try {
         const task = await track(api().tasks.move(id, input))
-        end(id)
-        if ((get().pending[id] ?? 0) === 0) put(task)
+        settle(id, seq, { task })
         return task
       } catch (err) {
-        end(id)
-        put(prev)
+        settle(id, seq, null)
         fail('move task', err)
         return null
       }
@@ -192,33 +273,31 @@ export const useTasksStore = create<TasksState>()((set, get) => {
       const prev = get().byId[id]
       if (!prev || isTempId(id)) return false
       deletedCache.set(id, prev)
-      drop(id)
-      begin(id)
+      const seq = nextSeq++
+      begin(id, { seq, kind: 'delete' })
       try {
         await track(api().tasks.delete(id))
-        end(id)
+        settle(id, seq, { deleted: true })
         return true
       } catch (err) {
-        end(id)
-        put(prev)
+        // Comes back as the newest server copy, not the snapshot taken before deleting.
+        settle(id, seq, null)
         fail('delete task', err)
         return false
       }
     },
 
     async restore(id) {
-      const cached = deletedCache.get(id)
-      if (cached) put(cached)
-      begin(id)
+      const cached = deletedCache.get(id) ?? null
+      const seq = nextSeq++
+      begin(id, { seq, kind: 'restore', task: cached })
       try {
         const task = await track(api().tasks.restore(id))
-        end(id)
         deletedCache.delete(id)
-        put(task)
+        settle(id, seq, { task })
         return task
       } catch (err) {
-        end(id)
-        if (cached) drop(id)
+        settle(id, seq, null)
         fail('restore task', err)
         return null
       }
@@ -233,10 +312,23 @@ export const useTasksStore = create<TasksState>()((set, get) => {
       if (!upsertedTasks?.length && !removedTaskIds?.length) return
       set((s) => {
         const byId = { ...s.byId }
+        let sync = s.sync
+        const syncFor = (id: string, entry: TaskSync): void => {
+          if (sync === s.sync) sync = { ...s.sync }
+          sync[id] = entry
+        }
         for (const t of upsertedTasks ?? []) {
+          const entry = sync[t.id]
+          if (entry) {
+            // Writes in flight: advance the server copy, keep pending fields on top.
+            const base = change.authoritative || newer(entry.base, t) ? t : entry.base
+            syncFor(t.id, { base, ops: entry.ops })
+            show(byId, t.id, replay(base, entry.ops))
+            continue
+          }
           const local = byId[t.id]
-          // While a local mutation is in flight, ignore broadcasts older than the optimistic state.
-          if (local && (s.pending[t.id] ?? 0) > 0 && t.updatedAt < local.updatedAt) continue
+          // Stale (an older version than we hold, e.g. a late broadcast for an earlier write).
+          if (local && !change.authoritative && t.updatedAt < local.updatedAt) continue
           if (!local) {
             // The broadcast for our own create can arrive before the invoke resolves; drop the
             // matching optimistic temp task so it never shows twice.
@@ -247,8 +339,16 @@ export const useTasksStore = create<TasksState>()((set, get) => {
           }
           byId[t.id] = t
         }
-        for (const id of removedTaskIds ?? []) delete byId[id]
-        return { byId }
+        for (const id of removedTaskIds ?? []) {
+          const entry = sync[id]
+          if (entry) {
+            syncFor(id, { base: null, ops: entry.ops })
+            show(byId, id, replay(null, entry.ops))
+          } else {
+            delete byId[id]
+          }
+        }
+        return { byId, sync }
       })
     },
   }
