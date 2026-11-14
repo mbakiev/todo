@@ -187,3 +187,52 @@ test('screenshots: detail panel (light + dark)', async () => {
   await page.waitForTimeout(300)
   await page.screenshot({ path: join(OUT, 'detail-panel-dark.png') })
 })
+
+test('at its minimum width the panel stays on one line: compact footer, collapsed toolbar', async () => {
+  launched = await launchApp({ seed: true })
+  const { page } = launched
+  await page.evaluate(() =>
+    (globalThis as unknown as { api: Api }).api.settings.set({ detailPanelWidth: 360 }),
+  )
+  await page.reload()
+  await page.waitForSelector('[data-slot="view"]')
+  await page.locator('[data-task-id]').first().click()
+
+  const toolbar = panel(page).getByRole('toolbar', { name: 'Formatting' })
+  expect((await toolbar.boundingBox())?.height ?? 99).toBeLessThanOrEqual(28) // one row
+  await expect(toolbar.getByRole('button', { name: 'Quote' })).toBeHidden()
+  // Collapsed buttons are reachable through "More formatting".
+  await editor(page).click()
+  await page.keyboard.type('quoted')
+  await toolbar.getByRole('button', { name: 'More formatting' }).click()
+  await page.getByRole('menuitem', { name: /Quote/ }).click()
+  await expect(editor(page).locator('blockquote')).toHaveText('quoted')
+
+  const footer = panel(page).locator('footer')
+  await expect(footer.getByText(/^Updated /)).toBeVisible()
+  await expect(footer.getByText(/^Created /)).toBeHidden()
+  const truncated = await footer
+    .locator('span.truncate')
+    .evaluateAll(
+      (els) =>
+        els.filter(
+          (e) =>
+            (e as unknown as { offsetWidth: number }).offsetWidth > 0 &&
+            (e as unknown as { scrollWidth: number }).scrollWidth >
+              (e as unknown as { clientWidth: number }).clientWidth,
+        ).length,
+    )
+  expect(truncated).toBe(0)
+  await expect(footer.getByRole('button', { name: 'Copy as Markdown' })).toBeVisible()
+
+  // At the default width everything is shown again.
+  await page.evaluate(() =>
+    (globalThis as unknown as { api: Api }).api.settings.set({ detailPanelWidth: 480 }),
+  )
+  await page.reload()
+  await page.waitForSelector('[data-slot="view"]')
+  await page.locator('[data-task-id]').first().click()
+  await expect(panel(page).getByRole('button', { name: 'Quote' })).toBeVisible()
+  await expect(panel(page).getByRole('button', { name: 'More formatting' })).toBeHidden()
+  await expect(panel(page).locator('footer').getByText(/^Created /)).toBeVisible()
+})

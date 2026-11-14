@@ -322,24 +322,45 @@ function PanelBody({ task }: { task: Task }) {
         />
       </div>
 
-      <footer className="flex h-11 shrink-0 items-center gap-2 border-t px-3 text-[11.5px] text-muted-foreground">
-        <div className="flex min-w-0 flex-1 items-center gap-2.5 truncate pl-2">
-          <Timestamp label="Created" at={task.createdAt} />
-          <Timestamp label="Updated" at={task.updatedAt} />
-          {task.completedAt !== null && <Timestamp label="Completed" at={task.completedAt} />}
+      {/* Narrow panel (< 440px): only "Updated …" (every timestamp in its tooltip) and an
+          icon-only Copy button, so nothing truncates mid-word. */}
+      <footer className="@container/footer shrink-0 border-t">
+        <div className="flex h-11 items-center gap-2 px-3 text-[11.5px] text-muted-foreground">
+          <div className="flex min-w-0 flex-1 items-center gap-2.5 pl-2">
+            <Timestamp
+              label="Created"
+              at={task.createdAt}
+              task={task}
+              // With a completion time too, "Created" makes room earlier.
+              className={cn(
+                '@max-[440px]/footer:hidden',
+                task.completedAt !== null && '@max-[600px]/footer:hidden',
+              )}
+            />
+            <Timestamp label="Updated" at={task.updatedAt} task={task} />
+            {task.completedAt !== null && (
+              <Timestamp
+                label="Completed"
+                at={task.completedAt}
+                task={task}
+                className="@max-[440px]/footer:hidden"
+              />
+            )}
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            title="Copy as Markdown"
+            className="h-7 shrink-0 gap-1.5 px-2 text-[12px] font-normal text-muted-foreground @max-[440px]/footer:w-7 @max-[440px]/footer:px-0"
+            onClick={() => void copyMarkdown()}
+          >
+            <Copy className="size-3.5" />
+            <span className="@max-[440px]/footer:sr-only">Copy as Markdown</span>
+          </Button>
+          <IconAction label="Delete task" onClick={remove} destructive>
+            <Trash2 />
+          </IconAction>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 gap-1.5 px-2 text-[12px] font-normal text-muted-foreground"
-          onClick={() => void copyMarkdown()}
-        >
-          <Copy className="size-3.5" />
-          Copy as Markdown
-        </Button>
-        <IconAction label="Delete task" onClick={remove} destructive>
-          <Trash2 />
-        </IconAction>
       </footer>
     </>
   )
@@ -447,22 +468,36 @@ function relative(at: number): string {
   return formatDistanceToNowStrict(at, { addSuffix: true })
 }
 
-function Timestamp({ label, at }: { label: string; at: number }) {
+function Timestamp({
+  label,
+  at,
+  task,
+  className,
+}: {
+  label: string
+  at: number
+  task: Task
+  className?: string
+}) {
   // Re-render once a minute so "just now" ages.
   const [, tick] = useState(0)
   useEffect(() => {
     const t = setInterval(() => tick((n) => n + 1), 60_000)
     return () => clearInterval(t)
   }, [])
+  const full = (ms: number): string => format(ms, "MMM d, yyyy 'at' h:mm a")
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="cursor-default truncate">
+        <span className={cn('min-w-0 cursor-default truncate whitespace-nowrap', className)}>
           {label} {relative(at)}
         </span>
       </TooltipTrigger>
-      <TooltipContent side="top" className="px-2 py-1">
-        {label} {format(at, "MMM d, yyyy 'at' h:mm a")}
+      <TooltipContent side="top" className="px-2 py-1 leading-relaxed">
+        {/* Every timestamp, so the compact footer (only "Updated") loses nothing. */}
+        <div>Created {full(task.createdAt)}</div>
+        <div>Updated {full(task.updatedAt)}</div>
+        {task.completedAt !== null && <div>Completed {full(task.completedAt)}</div>}
       </TooltipContent>
     </Tooltip>
   )
