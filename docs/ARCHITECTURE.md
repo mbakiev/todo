@@ -238,7 +238,7 @@ Definitions: `anchor(task) = startDate ?? dueDate`. `open` = status is not `done
 |---|---|
 | **Today** (board) | Open tasks where `anchor` is null or `anchor <= today`. Done column: only tasks whose `completedAt` falls on today (local). |
 | **This Week** (board) | Open tasks where `anchor` is null or `anchor <= end of this week`. Done column: only tasks completed within this week. Week start comes from settings (default Monday). |
-| **Everything** (board) | All tasks. Done column sorted by `completedAt` desc and virtualized. |
+| **Everything** (board) | All tasks. Done column sorted by `completedAt` desc, showing the newest 50 with a "Show more" control. |
 | **List** | All tasks in a sortable table. |
 | **Timeline** (Gantt) | Open tasks that have at least one date — future-dated work plus anything overdue. Completed tasks hidden by default (toggle to show). |
 | **Calendar** | Tasks that have at least one date. |
@@ -265,7 +265,8 @@ everywhere; due-today in amber.
   drag only changes the column. The selected sort persists in settings.
 - Inline "+ Add task" at the top of Not Started (title only, Enter to add, stays open
   for the next one).
-- Columns scroll independently; long columns are virtualized.
+- Columns scroll independently. No virtualization on boards (it fights drag-and-drop and open
+  columns stay small in practice); the Done column pages in 50 at a time via "Show more".
 
 ### List
 TanStack Table. Columns: status, title, priority, tags, start, due, created, completed.
@@ -362,6 +363,9 @@ window — capture should not pull you out of what you were doing.
   bounds are persisted and restored.
 
 ### Settings
+The Settings dialog also hosts **tag management** (rename, recolour, delete) and the
+export / import / backup controls.
+
 `theme` (system | light | dark), `weekStartsOn` (1 Mon | 0 Sun), `shortcuts.toggleApp`,
 `shortcuts.quickAdd`, `launchAtLogin`, `boardSort` (one value per board:
 `{ today, week, everything }`), `detailPanelWidth`, `lastView`, `windowBounds` (main-window
