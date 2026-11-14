@@ -264,6 +264,12 @@
   border-radius: 6px;
   padding: 0.4rem 0.6rem;
 }
+/* HTML character references (&copy;, &nbsp;…): shown as written, kept verbatim on save */
+.md-content .md-entity {
+  color: var(--muted-foreground);
+  text-decoration: underline dotted var(--border);
+  text-underline-offset: 2px;
+}
 .md-content .ProseMirror-selectednode,
 .md-content .md-raw.ProseMirror-selectednode {
   outline: 2px solid var(--ring);

@@ -1,8 +1,8 @@
 // Preservation nodes for Markdown the editor has no schema for: images, inline/block HTML,
-// HTML comments and footnotes. Without these `@tiptap/markdown` silently drops images to their
+// HTML comments, footnotes and HTML entity references. Without these `@tiptap/markdown` silently drops images to their
 // alt text, strips HTML tags and rewrites footnotes into links. The source is kept verbatim in
 // an atom node (shown as a small monospace chip / box) and written back unchanged.
-import { mergeAttributes, Node } from '@tiptap/core'
+import { Mark, mergeAttributes, Node } from '@tiptap/core'
 
 const INLINE_PATTERNS: RegExp[] = [
   // Image: ![alt](src "title") and ![alt][ref]
@@ -139,4 +139,54 @@ export const RawBlock = Node.create({
     attrs: { raw: (token.raw ?? '').replace(/\n+$/, '') },
   }),
   renderMarkdown: (node) => String(node.attrs?.['raw'] ?? ''),
+})
+
+// HTML entity / numeric character references (`&copy;`, `&nbsp;`, `&#8212;`, `&#x2014;`).
+// `@tiptap/markdown` keeps them as literal text, which the serialiser then has to escape, so
+// a save turned `&copy;` into `&amp;copy;` (rendering "&copy;" instead of "©"). A parsed
+// reference becomes text carrying the `htmlEntity` mark; the serialiser (patchSerializer.ts)
+// writes such text back verbatim as long as it still is nothing but entity references. Being a
+// mark (not an atom), it combines with bold / italic / links like any other text.
+const ENTITY = String.raw`&(?:#\d{1,7}|#[xX][0-9a-fA-F]{1,6}|[A-Za-z][A-Za-z0-9]{1,31});`
+const ENTITY_START_RE = new RegExp(`^${ENTITY}`)
+/** Text that is one or more entity references and nothing else. */
+export const ENTITY_TEXT_RE = new RegExp(`^(?:${ENTITY})+$`)
+
+export const HTML_ENTITY_MARK = 'htmlEntity'
+
+export const HtmlEntity = Mark.create({
+  name: HTML_ENTITY_MARK,
+  // Typing next to a reference never extends it.
+  inclusive: false,
+  // Must not exclude other marks (bold, link…).
+  excludes: HTML_ENTITY_MARK,
+
+  parseHTML() {
+    return [{ tag: 'span[data-md-entity]' }]
+  },
+  renderHTML({ HTMLAttributes }) {
+    return [
+      'span',
+      mergeAttributes(HTMLAttributes, {
+        'data-md-entity': '',
+        class: 'md-entity',
+        title: 'HTML character reference; kept as written',
+      }),
+      0,
+    ]
+  },
+
+  markdownTokenName: HTML_ENTITY_MARK,
+  markdownTokenizer: {
+    name: HTML_ENTITY_MARK,
+    level: 'inline',
+    start: (src: string) => src.indexOf('&'),
+    tokenize: (src: string) => {
+      const m = ENTITY_START_RE.exec(src)
+      return m ? { type: HTML_ENTITY_MARK, raw: m[0], text: m[0] } : undefined
+    },
+  },
+  parseMarkdown: (token, helpers) =>
+    helpers.applyMark(HTML_ENTITY_MARK, [helpers.createTextNode(token.raw ?? '')]),
+  renderMarkdown: (node, helpers) => helpers.renderChildren(node),
 })

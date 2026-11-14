@@ -5,6 +5,7 @@
 import type { JSONContent } from '@tiptap/core'
 import { MarkdownManager } from '@tiptap/markdown'
 import { escapeMarkdownText } from './escape'
+import { ENTITY_TEXT_RE, HTML_ENTITY_MARK } from './rawMarkdown'
 
 interface PatchableManager {
   codeTypes: Set<string>
@@ -37,6 +38,9 @@ export function installMarkdownEscapePatch(): void {
       (parentNode?.type != null && this.codeTypes.has(parentNode.type)) ||
       (node.marks ?? []).some((m) => this.codeTypes.has(m.type))
     if (inCode) return text
+    // A parsed HTML entity reference (see rawMarkdown.ts) is written back verbatim.
+    if ((node.marks ?? []).some((m) => m.type === HTML_ENTITY_MARK) && ENTITY_TEXT_RE.test(text))
+      return text
     return escapeMarkdownText(text, isAtLineStart(node, parentNode))
   }
   proto[PATCHED] = true

@@ -8,7 +8,7 @@ import { Markdown } from '@tiptap/markdown'
 import StarterKit from '@tiptap/starter-kit'
 import { MarkdownClipboard } from './clipboard'
 import { installMarkdownEscapePatch } from './patchSerializer'
-import { RawBlock, RawInline } from './rawMarkdown'
+import { HtmlEntity, RawBlock, RawInline } from './rawMarkdown'
 
 installMarkdownEscapePatch()
 
@@ -46,6 +46,7 @@ export function createExtensions({ placeholder }: EditorExtensionOptions = {}): 
     TaskItem.configure({ nested: true }),
     RawInline,
     RawBlock,
+    HtmlEntity,
     Markdown.configure({ indentation: { style: 'space', size: 2 } }),
     MarkdownClipboard,
   ]

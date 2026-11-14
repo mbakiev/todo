@@ -145,7 +145,10 @@ describe('markdown round-trip (@tiptap/markdown)', () => {
       const out = expectStable(md)
       const doc = parseMarkdown(out)
       expect(doc.content?.every((n) => n.type === 'paragraph')).toBe(true)
-      expect(find(doc, 'text').every((t) => !t.marks?.length)).toBe(true)
+      // No formatting marks (an entity reference's own mark is not formatting).
+      expect(
+        find(doc, 'text').every((t) => (t.marks ?? []).every((m) => m.type === 'htmlEntity')),
+      ).toBe(true)
     })
   })
 
@@ -162,6 +165,48 @@ describe('markdown round-trip (@tiptap/markdown)', () => {
       // Compare ignoring table padding.
       const squash = (s: string): string => s.replace(/ {2,}/g, ' ').replace(/-{3,}/g, '---')
       expect(squash(out)).toBe(squash(md))
+    })
+  })
+
+  describe('HTML entity references survive verbatim (never become &amp;…)', () => {
+    it.each([
+      ['named', 'AT&T and R&D &copy; 2026'],
+      ['nbsp', 'html &nbsp; space'],
+      ['numeric', 'dash &#8212; and &#x2014; too'],
+      ['escaped html', '&lt;b&gt; stays &amp; text'],
+      ['in emphasis', '**&copy; bold** and *&nbsp;*'],
+      ['in a list', '- one &hellip;\n- two &rarr; three'],
+      ['in a table', '| a | b |\n| --- | --- |\n| &copy; | x &amp; y |'],
+    ])('%s', (_name, md) => {
+      const out = expectStable(md)
+      const squash = (s: string): string => s.replace(/ {2,}/g, ' ').replace(/-{3,}/g, '---')
+      expect(squash(out)).toBe(squash(md))
+      expect(out).not.toMatch(/&amp;(?:copy|nbsp|#|hellip|rarr|lt|gt)/)
+    })
+
+    it('a code span keeps its text literal', () => {
+      expect(expectStable('`&copy;` is how you write it')).toBe('`&copy;` is how you write it')
+    })
+
+    it('an edited reference that is no longer one is escaped like normal text', () => {
+      const doc: JSONContent = {
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [{ type: 'text', text: '&copy; *x', marks: [{ type: 'htmlEntity' }] }],
+          },
+        ],
+      }
+      expect(serializeMarkdown(doc)).toBe('&amp;copy; \\*x')
+    })
+
+    it('literal text typed as "&copy;" (a text node) is still escaped', () => {
+      const doc: JSONContent = {
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'write &copy;' }] }],
+      }
+      expect(serializeMarkdown(doc)).toBe('write &amp;copy;')
     })
   })
 
