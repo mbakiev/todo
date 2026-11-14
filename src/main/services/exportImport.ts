@@ -61,7 +61,10 @@ export async function importFromFile(
     tagIds: ctx.repos.tags.list().map((t) => t.id),
   }
   // Replace: snapshot first (outside the transaction — VACUUM INTO cannot run inside one).
-  const backupPath = mode === 'replace' ? takeBackup(ctx.repos.db, ctx.paths.backupsDir) : undefined
+  const backupPath =
+    mode === 'replace'
+      ? takeBackup(ctx.repos.db, ctx.paths.backupsDir, { kind: 'preimport' })
+      : undefined
   const counts = applyImport(ctx.repos, file, mode)
   ctx.broadcastDataChanged(importBroadcast(before, ctx.repos))
   return backupPath ? { ...counts, backupPath } : counts

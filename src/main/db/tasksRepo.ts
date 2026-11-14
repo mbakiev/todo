@@ -64,6 +64,8 @@ export interface TasksRepo {
   restore(id: string): Task
   /** Hard-deletes tasks soft-deleted more than 30 days ago. Returns count. */
   purgeDeleted(): number
+  /** Number of task rows, soft-deleted ones included. */
+  countAll(): number
 }
 
 function toPriority(n: number): Priority {
@@ -334,6 +336,10 @@ export function createTasksRepo(db: Db, tags: TagsRepo, now: () => number = Date
       const cutoff = now() - SOFT_DELETE_RETENTION_MS
       return db.run('DELETE FROM tasks WHERE deleted_at IS NOT NULL AND deleted_at < ?', [cutoff])
         .changes
+    },
+
+    countAll() {
+      return db.get<{ n: number }>('SELECT COUNT(*) AS n FROM tasks')?.n ?? 0
     },
   }
   return repo

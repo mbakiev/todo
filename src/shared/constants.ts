@@ -118,7 +118,12 @@ export const MAX_TITLE_LENGTH = 500
 export const MAX_DESCRIPTION_LENGTH = 200_000
 export const MAX_TAG_NAME_LENGTH = 50
 
-export const BACKUP_KEEP_COUNT = 14
+/**
+ * Backups kept per kind (the kind is encoded in the file name, see main/services/backup.ts):
+ * automatic startup/daily snapshots, manual "Back up now", and safety copies taken before an
+ * import replaces data.
+ */
+export const BACKUP_KEEP = { auto: 14, manual: 10, preimport: 5 } as const
 export const BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000
 
 /** Debounce for title/description autosave in the detail panel. */

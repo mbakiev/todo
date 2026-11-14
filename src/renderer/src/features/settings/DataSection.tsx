@@ -1,6 +1,6 @@
 import { Download, FolderOpen, HardDriveDownload, Upload } from 'lucide-react'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { APP_DISPLAY_NAME, BACKUP_KEEP_COUNT } from '@shared/constants'
+import { APP_DISPLAY_NAME, BACKUP_KEEP } from '@shared/constants'
 import type { BackupInfo, ImportResult } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import {
@@ -181,8 +181,8 @@ export function DataSection() {
         title="Backups"
         description={
           <>
-            Taken automatically at startup and every 24 hours; the newest {BACKUP_KEEP_COUNT} are
-            kept.
+            Taken automatically at startup and every 24 hours (newest {BACKUP_KEEP.auto} kept);
+            &ldquo;Back up now&rdquo; copies are kept separately (newest {BACKUP_KEEP.manual}).
             <br />
             <span data-testid="last-backup">
               {backup?.latest
