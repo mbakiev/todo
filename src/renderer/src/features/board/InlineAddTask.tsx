@@ -73,7 +73,11 @@ export function InlineAddTask({ scope }: { scope: BoardScope }) {
 
   // The 1 px border + 30 px input match the closed button's 32 px, so nothing below moves.
   return (
-    <div className="rounded-md border border-primary/50 bg-card shadow-xs ring-1 ring-primary/30">
+    // data-no-deselect: clicks in the form (its border, the error line) never close the panel.
+    <div
+      className="rounded-md border border-primary/50 bg-card shadow-xs ring-1 ring-primary/30"
+      data-no-deselect
+    >
       <input
         ref={inputRef}
         autoFocus
