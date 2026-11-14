@@ -27,6 +27,8 @@ export interface UiState {
   setSearchText(text: string): void
   toggleFilterTag(tagId: string): void
   setFilterTags(tagIds: string[]): void
+  /** Drops filter tags that no longer exist (deleted here, in another window, or by an import). */
+  retainFilterTags(existing: ReadonlySet<string>): void
   toggleFilterPriority(p: Priority): void
   setFilterPriorities(priorities: Priority[]): void
   clearFilter(): void
@@ -54,6 +56,12 @@ export const useUiStore = create<UiState>()((set) => ({
   toggleFilterTag: (tagId) =>
     set((s) => ({ filter: { ...s.filter, tagIds: toggle(s.filter.tagIds, tagId) } })),
   setFilterTags: (tagIds) => set((s) => ({ filter: { ...s.filter, tagIds } })),
+  retainFilterTags: (existing) =>
+    set((s) =>
+      s.filter.tagIds.every((id) => existing.has(id))
+        ? s
+        : { filter: { ...s.filter, tagIds: s.filter.tagIds.filter((id) => existing.has(id)) } },
+    ),
   toggleFilterPriority: (p) =>
     set((s) => ({ filter: { ...s.filter, priorities: toggle(s.filter.priorities, p) } })),
   setFilterPriorities: (priorities) => set((s) => ({ filter: { ...s.filter, priorities } })),

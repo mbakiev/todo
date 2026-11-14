@@ -18,3 +18,14 @@ describe('uiStore.openNewTaskDialog', () => {
     expect(useUiStore.getState().newTaskDialog.prefill).toEqual({ dueDate: '2026-11-20' })
   })
 })
+
+describe('uiStore.retainFilterTags', () => {
+  it('drops filter tags that no longer exist and keeps the rest in order', () => {
+    useUiStore.getState().setFilterTags(['a', 'gone', 'b'])
+    useUiStore.getState().retainFilterTags(new Set(['a', 'b', 'c']))
+    expect(useUiStore.getState().filter.tagIds).toEqual(['a', 'b'])
+    const before = useUiStore.getState().filter
+    useUiStore.getState().retainFilterTags(new Set(['a', 'b']))
+    expect(useUiStore.getState().filter).toBe(before) // no-op keeps identity
+  })
+})
