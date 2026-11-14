@@ -1,129 +1,128 @@
-// PLACEHOLDER — owned by the board feature. Replace this file's contents (keep the export
-// name and props). Spec §6 "Board (Kanban)".
-import { FileText } from 'lucide-react'
-import { useMemo } from 'react'
-import { STATUSES, STATUS_LABELS } from '@shared/constants'
-import type { BoardScope, BoardSort, Task } from '@shared/types'
-import { boardColumns, checklistProgress, hasDescription } from '@shared/views'
+// Kanban board for the Today / This Week / Everything views (spec §6 "Board (Kanban)").
+import { DndContext, DragOverlay, MeasuringStrategy, type DropAnimation } from '@dnd-kit/core'
+import { useMemo, useState } from 'react'
+import { STATUSES } from '@shared/constants'
+import type { BoardScope, Status, Task } from '@shared/types'
+import { boardColumns } from '@shared/views'
 import { ToolbarControls } from '@/app/ToolbarControls'
-import {
-  DueDateBadge,
-  PriorityIcon,
-  StatusIcon,
-  TaskContextMenu,
-  TaskTags,
-} from '@/components/task'
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useToday } from '@/lib/useToday'
-import { cn } from '@/lib/utils'
-import { useFilteredTasks, useSettings } from '@/stores/selectors'
-import { useSettingsStore } from '@/stores/settingsStore'
+import { useFilteredTasks, useIsFilterActive, useSettings } from '@/stores/selectors'
 import { useUiStore } from '@/stores/uiStore'
+import { CardBody } from './BoardCard'
+import { BoardColumn } from './BoardColumn'
+import { BoardSortControl } from './BoardSortControl'
+import { DONE_PAGE_SIZE, isColumnManual } from './boardDnd'
+import { InlineAddTask } from './InlineAddTask'
+import { useBoardDnd } from './useBoardDnd'
 
 export interface BoardViewProps {
   scope: BoardScope
 }
 
-const SORTS: Array<{ value: BoardSort; label: string }> = [
-  { value: 'priority', label: 'Priority' },
-  { value: 'due', label: 'Due' },
-  { value: 'manual', label: 'Manual' },
-]
-
-function Card({ task }: { task: Task }) {
-  const selected = useUiStore((s) => s.selectedTaskId === task.id)
-  const progress = checklistProgress(task.description)
-  return (
-    <TaskContextMenu task={task}>
-      <button
-        type="button"
-        data-task-id={task.id}
-        onClick={() => useUiStore.getState().selectTask(task.id)}
-        className={cn(
-          'flex w-full flex-col gap-1.5 rounded-md border bg-card p-2.5 text-left shadow-xs outline-none',
-          'hover:border-zinc-300 focus-visible:ring-2 focus-visible:ring-ring/50 dark:hover:border-zinc-600',
-          selected && 'border-primary/60 ring-1 ring-primary/40',
-        )}
-      >
-        <span
-          className={cn(
-            'text-[13px] leading-snug',
-            task.status === 'done' && 'text-muted-foreground line-through',
-          )}
-        >
-          {task.title}
-        </span>
-        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <PriorityIcon priority={task.priority} />
-          <DueDateBadge dueDate={task.dueDate} status={task.status} />
-          {hasDescription(task) && (
-            <FileText className="size-3 text-muted-foreground" aria-label="Has description" />
-          )}
-          {progress && (
-            <span className="text-[11px] text-muted-foreground tabular-nums">
-              {progress.done}/{progress.total}
-            </span>
-          )}
-          <TaskTags tagIds={task.tagIds} />
-        </span>
-      </button>
-    </TaskContextMenu>
-  )
+const DONE_EMPTY: Record<BoardScope, string> = {
+  today: 'Nothing finished today yet',
+  week: 'Nothing finished this week yet',
+  everything: 'Nothing finished yet',
 }
+
+function emptyText(status: Status, scope: BoardScope, filtered: boolean): string {
+  if (filtered) return 'No matching tasks'
+  switch (status) {
+    case 'not_started':
+      return scope === 'today' ? 'Nothing left for today' : 'Nothing waiting to start'
+    case 'in_progress':
+      return 'Nothing in progress'
+    case 'blocked':
+      return 'Nothing blocked'
+    case 'done':
+      return DONE_EMPTY[scope]
+  }
+}
+
+const dropAnimation: DropAnimation = { duration: 180, easing: 'cubic-bezier(0.2, 0, 0, 1)' }
+
+// Columns change size while a card hops between them; keep droppable rects fresh.
+const measuring = { droppable: { strategy: MeasuringStrategy.Always } }
 
 export function BoardView({ scope }: BoardViewProps) {
   const tasks = useFilteredTasks()
   const today = useToday()
   const settings = useSettings()
+  const filtered = useIsFilterActive()
   const sort = settings.boardSort[scope]
   const columns = useMemo(
     () => boardColumns(scope, tasks, today, settings, sort),
     [scope, tasks, today, settings, sort],
   )
 
+  // Done pages in 50 at a time (no virtualization on boards).
+  const [doneLimit, setDoneLimit] = useState(DONE_PAGE_SIZE)
+  const visible = useMemo<Record<Status, Task[]>>(
+    () => ({ ...columns, done: columns.done.slice(0, doneLimit) }),
+    [columns, doneLimit],
+  )
+
+  const dnd = useBoardDnd(scope, sort, visible)
+  const selectedId = useUiStore((s) => s.selectedTaskId)
+  const dragging = dnd.activeTask !== null
+  const hiddenDone = columns.done.length - visible.done.length
+  const filteredAway = filtered && STATUSES.every((s) => columns[s].length === 0)
+
   return (
-    <div className="flex h-full gap-3 overflow-x-auto p-4" data-testid={`board-${scope}`}>
-      {/* Example of the toolbar-controls mechanism: the sort selector lives in the shell toolbar. */}
+    <DndContext {...dnd.dndContextProps} measuring={measuring}>
       <ToolbarControls>
-        <ToggleGroup
-          type="single"
-          size="sm"
-          variant="outline"
-          value={sort}
-          onValueChange={(v) =>
-            v && void useSettingsStore.getState().set({ boardSort: { [scope]: v as BoardSort } })
-          }
-          aria-label="Sort"
-        >
-          {SORTS.map((s) => (
-            <ToggleGroupItem key={s.value} value={s.value} className="h-7 px-2.5 text-xs">
-              {s.label}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
+        <BoardSortControl scope={scope} sort={sort} />
       </ToolbarControls>
 
-      {STATUSES.map((status) => (
-        <section
-          key={status}
-          className="flex w-72 shrink-0 flex-col rounded-lg bg-column"
-          aria-label={STATUS_LABELS[status]}
-        >
-          <header className="flex h-9 items-center gap-2 px-3 text-xs font-medium">
-            <StatusIcon status={status} />
-            {STATUS_LABELS[status]}
-            <span className="text-muted-foreground tabular-nums">{columns[status].length}</span>
-          </header>
-          <div className="flex min-h-0 flex-1 scrollbar-thin flex-col gap-1.5 overflow-y-auto px-2 pb-2">
-            {columns[status].map((t) => (
-              <Card key={t.id} task={t} />
-            ))}
-            {columns[status].length === 0 && (
-              <p className="px-1 py-2 text-xs text-muted-foreground">No tasks</p>
-            )}
-          </div>
-        </section>
-      ))}
-    </div>
+      <div
+        className="flex h-full scrollbar-thin gap-3 overflow-x-auto p-4"
+        data-testid={`board-${scope}`}
+        data-sort={sort}
+      >
+        {STATUSES.map((status) => (
+          <BoardColumn
+            key={status}
+            status={status}
+            tasks={dnd.columns[status]}
+            total={status === 'done' ? columns.done.length : columns[status].length}
+            manual={isColumnManual(sort, scope, status)}
+            dropTarget={dragging && dnd.overStatus === status && dnd.originStatus !== status}
+            dragging={dragging}
+            emptyText={
+              filteredAway && status === 'not_started'
+                ? 'Nothing on this board matches the filter'
+                : emptyText(status, scope, filtered)
+            }
+            header={status === 'not_started' ? <InlineAddTask scope={scope} /> : undefined}
+            footer={
+              status === 'not_started' && filteredAway ? (
+                <button
+                  type="button"
+                  onClick={() => useUiStore.getState().clearFilter()}
+                  className="self-start rounded-sm px-1 text-xs text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+                >
+                  Clear filters
+                </button>
+              ) : status === 'done' && hiddenDone > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setDoneLimit((n) => n + DONE_PAGE_SIZE)}
+                  className="mt-0.5 h-8 shrink-0 rounded-md text-xs text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+                >
+                  Show {Math.min(DONE_PAGE_SIZE, hiddenDone)} more
+                  <span className="text-muted-foreground/70"> · {hiddenDone} older</span>
+                </button>
+              ) : undefined
+            }
+          />
+        ))}
+      </div>
+
+      <DragOverlay dropAnimation={dropAnimation}>
+        {dnd.activeTask && (
+          <CardBody task={dnd.activeTask} selected={dnd.activeTask.id === selectedId} overlay />
+        )}
+      </DragOverlay>
+    </DndContext>
   )
 }
