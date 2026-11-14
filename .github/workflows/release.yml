@@ -1,0 +1,80 @@
+# Cut a release: bump "version" in package.json, commit, tag `v<version>`, push the tag.
+# Runs the full CI workflow (checks, unit + e2e tests, packaging + smoke test) and then
+# publishes a GitHub Release with auto-generated notes and the installers attached.
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+# Never cancel a release run; a second push of the same tag waits for the first.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Tag matches package.json
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compare tag with package.json version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="$(jq -r .version package.json)"
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::Tag $TAG does not match package.json version $version (expected v$version)"
+            exit 1
+          fi
+          echo "Releasing $TAG"
+
+  ci:
+    name: CI
+    needs: version
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    name: Publish GitHub Release
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download installers
+        uses: actions/download-artifact@v8
+        with:
+          pattern: installers-*
+          path: dist
+          merge-multiple: true
+      - name: Check every installer is present
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          ls -l dist
+          for f in \
+            "MartinsToDos-$version-mac-arm64.dmg" "MartinsToDos-$version-mac-arm64.zip" \
+            "MartinsToDos-$version-mac-x64.dmg" "MartinsToDos-$version-mac-x64.zip" \
+            "MartinsToDos-$version-win-x64-setup.exe"; do
+            if [ ! -f "dist/$f" ]; then echo "::error::missing $f"; exit 1; fi
+          done
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          # A version with a pre-release suffix (v1.2.0-beta.1) is published as a pre-release.
+          prerelease=()
+          if [[ "$TAG" == *-* ]]; then prerelease=(--prerelease); fi
+          gh release create "$TAG" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Martin's To Dos ${TAG#v}" \
+            --generate-notes \
+            --verify-tag \
+            "${prerelease[@]}"

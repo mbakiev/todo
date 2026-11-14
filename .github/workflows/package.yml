@@ -1,0 +1,86 @@
+# Reusable: builds the installers with electron-builder (never publishes), smoke-tests the
+# packaged app, and uploads the installers as workflow artifacts. Called by ci.yml and
+# release.yml, so a release ships exactly what CI builds.
+name: Package
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            dist: dist:mac
+            artifact: installers-macos
+            files: |
+              release/*/*.dmg
+              release/*/*.zip
+          - os: windows-latest
+            dist: dist:win
+            artifact: installers-windows
+            files: |
+              release/*/*-setup.exe
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+
+      # Typecheck + electron-vite build + electron-builder. `--publish never` on top of
+      # `publish: null` in electron-builder.yml: CI never uploads anywhere by itself.
+      - name: Build installers
+        run: npm run ${{ matrix.dist }} -- --publish never
+
+      - name: Smoke-test the packaged app
+        run: npm run test:packaged
+
+      # Windows: also prove the NSIS installer installs (silently, per-user, no UAC),
+      # that the installed app runs, and that it uninstalls.
+      - name: Install, smoke-test and uninstall (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem release/*/*-setup.exe | Select-Object -First 1
+          Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\Martins To Dos'
+          $exe = Join-Path $dir 'Martins To Dos.exe'
+          if (-not (Test-Path $exe)) { throw "installed app not found: $exe" }
+          $env:MARTIN_TODOS_PACKAGED_EXE = $exe
+          npm run test:packaged
+          if ($LASTEXITCODE -ne 0) { throw "smoke test against the installed app failed" }
+          Start-Process -FilePath (Join-Path $dir 'Uninstall Martins To Dos.exe') -ArgumentList '/S' -Wait
+          # The uninstaller copies itself to %TEMP% and returns at once; wait for removal.
+          for ($i = 0; $i -lt 60 -and (Test-Path $exe); $i++) { Start-Sleep -Seconds 1 }
+          if (Test-Path $exe) { throw "uninstall left $exe behind" }
+
+      - name: Upload Playwright traces and report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: packaged-smoke-results-${{ matrix.os }}
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 5
+          if-no-files-found: ignore
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.files }}
+          retention-days: 7
+          if-no-files-found: error
+          # Already compressed (dmg / zip / NSIS).
+          compression-level: 0
