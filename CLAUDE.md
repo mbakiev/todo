@@ -6,6 +6,8 @@ Source of truth for product + architecture: `docs/ARCHITECTURE.md`. Read it befo
 - `npm run dev` / `npm run seed` (demo data into empty dev DB) / `npm run seed:reset`
 - `npm run typecheck` · `npm run lint` · `npm test` (Vitest) · `npm run test:e2e` (builds, then Playwright `_electron`)
 - `npm run build` (typecheck + electron-vite build) · `npm run format`
+- `npm run test:packaged` (smoke test of the electron-builder output; CI only — never package locally while the app runs from `release/`)
+- CI: `.github/workflows/` — `ci.yml` (checks, unit on Linux/macOS/Windows, e2e + packaging on macOS/Windows), `release.yml` (push tag `vX.Y.Z` = package.json version), CodeQL, Dependabot. See README "CI and releases".
 - typecheck, lint and test must pass before reporting work as done.
 
 ## Where things live

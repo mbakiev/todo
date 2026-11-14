@@ -1,8 +1,49 @@
 # Windows handover checklist
 
-The app has only been built and run on macOS. Everything Windows-specific below was
-reviewed against the code but **never executed**. Work top to bottom; items are in
-priority order. File references are to `src/main/` unless stated otherwise.
+The app was developed on macOS. Since the GitHub Actions CI (README "CI and releases") it is
+also built and tested on a `windows-latest` runner (Windows Server, x64) on every push and
+PR — see "What CI proves on Windows" below. Everything else here was reviewed against the
+code but **never executed on Windows**: it needs a real desktop session and a person. Work
+top to bottom; items are in priority order. File references are to `src/main/` unless
+stated otherwise.
+
+## What CI proves on Windows
+
+Checked on every run (`.github/workflows/ci.yml`, `package.yml`):
+
+- `npm ci`, typecheck, and `npm test` pass on Windows (unit tests in `TZ=America/New_York`,
+  checked by `src/main/unitTestTimezone.test.ts`), including the startup-recovery tests
+  against real files (a damaged DB held open by another SQLite handle can't be moved aside).
+- The Playwright `_electron` e2e suite (`npm run test:e2e`) passes against the unpackaged
+  build: boards, list, timeline, calendar, detail panel, quick-add window (shown via a test
+  hook), settings, export/import, crash recovery, quit gate, startup dialogs (stubbed),
+  clipboard (CRLF line endings), window sizing. One test is skipped on Windows: "SIGTERM saves
+  pending edits" — Windows has no catchable SIGTERM.
+- `npm run dist:win` builds `MartinsToDos-<version>-win-x64-setup.exe` (unsigned) without
+  errors.
+- The packaged app (`release/<version>/win-unpacked`) starts as a packaged build with the right
+  version, renders the board and creates a task (`npm run test:packaged`).
+- The NSIS installer installs **silently** (`/S`) per-user to
+  `%LOCALAPPDATA%\Programs\Martins To Dos\` without UAC, the installed exe passes the same
+  smoke test, and the silent uninstaller removes it.
+
+Not covered by CI (still manual, below):
+
+- **Global hotkeys**: e2e uses a fake registrar (`MARTIN_TODOS_E2E=1`), so real
+  `globalShortcut` registration, AltGr collisions and taken combos (3.7, 3.11) are untested.
+- **Focus behaviour**: quick-add returning focus to the previous app, foreground rights,
+  taskbar flashing (3.1, 3.2) — CI drives windows programmatically, not with real input.
+- **Tray** icon, menu and left-click toggle (3.3); **close-to-tray** via the real ✕ button.
+- **Logoff / shutdown**: the `query-session-end` / `session-end` path (3.4) has **no test** at
+  all (unit or e2e); the SIGTERM test that covers the same quit gate on macOS is skipped on
+  Windows.
+- **Installer UI**: the assisted pages, the finish-page "Run" and desktop-shortcut checkboxes,
+  Start-menu entry and icon, AUMID / taskbar pinning, upgrade-in-place (2). Silent install
+  skips every page.
+- **Launch at login** (3.6): disabled in test mode. **SmartScreen**: the runner never downloads
+  the installer from the internet. **Multi-monitor / mixed DPI** (3.2, 3.10), dark taskbar
+  rendering of `tray.ico`, file dialogs (3.8, stubbed or bypassed in e2e), single-instance
+  re-launch from the Start menu (3.9).
 
 ## 0. Prerequisites
 
@@ -27,8 +68,9 @@ npm run dist:win                            # → release\0.1.0\MartinsToDos-0.1
 
 - [ ] All npm scripts are plain commands chained with `&&` (no `VAR=x` prefixes, no `rm`,
       no globs), so they run the same in PowerShell and cmd. Report any that don't.
-- [ ] `npm run dist:win` succeeds. It runs on Windows only (it hasn't been tried by
-      cross-building). Unsigned: expect a "no signing info" message, not an error.
+- [x] `npm run dist:win` succeeds (proven by CI). It runs on Windows only (it hasn't been
+      tried by cross-building). Unsigned: expect a "no code signing certificate configured,
+      signing is skipped" message, not an error.
 - [ ] Watch for e2e failures caused by Windows itself (focus, timing) vs real bugs.
 
 ## 2. Installer (do this before the behaviour checks; most of them need the installed app)

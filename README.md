@@ -1,5 +1,7 @@
 # Martin's To Dos
 
+[![CI](https://github.com/mbakiev/todo/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mbakiev/todo/actions/workflows/ci.yml)
+
 A personal, local-only desktop task tracker for small tasks captured in passing (Electron +
 React + SQLite, macOS and Windows). A global hotkey pops up a quick-add box; date-aware
 boards keep the focus on what matters today. Spec: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
@@ -65,7 +67,8 @@ restore the newest backup (the unreadable file is kept as `todos.db.broken-<time
 
 ## Development
 
-Requires Node 22.12+ and npm (macOS or Windows; no native build tools needed).
+Requires Node 22.12+ and npm (macOS or Windows; no native build tools needed). CI uses Node 24
+(`.nvmrc`), the version bundled in Electron 45.
 
 ```sh
 npm ci
@@ -93,3 +96,36 @@ AirDropped from elsewhere is quarantined, so run
 Settings → Privacy & Security → Open Anyway). **Windows:** run
 `MartinsToDos-<version>-win-x64-setup.exe` (per-user, no admin); SmartScreen →
 "More info" → "Run anyway". Windows checklist: [`docs/WINDOWS_HANDOVER.md`](docs/WINDOWS_HANDOVER.md).
+
+## CI and releases
+
+GitHub Actions (`.github/workflows/`), on every push to `main`, every pull request, and on
+demand (Actions → CI → Run workflow):
+
+| Job | Runs on | What |
+|---|---|---|
+| Typecheck, lint, format | Linux | `npm run typecheck`, `lint`, `format:check` |
+| Unit tests | Linux, macOS, Windows | `npm test` (Vitest, `TZ=America/New_York`) |
+| E2E | macOS, Windows | `npm run test:e2e` (Playwright `_electron`); traces uploaded on failure |
+| Package | macOS, Windows | `dist:mac` / `dist:win` with `--publish never`, then `npm run test:packaged` against the packaged app (Windows also silently installs, smoke-tests and uninstalls the NSIS installer) |
+
+CodeQL scans the code on pushes, PRs and weekly; Dependabot proposes GitHub Actions updates
+weekly and npm updates monthly (minor + patch grouped in one PR).
+
+**Downloading a build:** open a CI run (Actions tab, or the checks on a PR) → *Artifacts* →
+`installers-macos` (arm64 + x64 `.dmg` / `.zip`) or `installers-windows` (`-setup.exe`).
+Artifacts are kept for 7 days.
+
+**Cutting a release:**
+
+1. Bump `"version"` in `package.json` (and `package-lock.json`), e.g. `npm version 0.2.0 --no-git-tag-version`, and commit it to `main`.
+2. `git tag v0.2.0 && git push origin v0.2.0`.
+3. `release.yml` checks that the tag equals `v` + the `package.json` version, runs the whole
+   CI workflow, then publishes a GitHub Release with auto-generated notes and the macOS
+   DMGs/ZIPs and the Windows installer attached. A tag with a suffix (`v0.2.0-beta.1`) becomes
+   a pre-release.
+
+**The installers are unsigned** (signing certificates cost money): the macOS app is ad-hoc
+signed and not notarized, so Gatekeeper blocks a downloaded copy until you allow it
+(System Settings → Privacy & Security → *Open Anyway*, or the `xattr` command above); the
+Windows installer triggers a SmartScreen warning (*More info* → *Run anyway*).

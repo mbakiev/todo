@@ -538,6 +538,20 @@ no theme gallery.
 - electron-builder targets: macOS `dmg` (arm64 + x64), Windows `nsis` (x64). Unsigned
   for now. No auto-update.
 
+### CI and releases
+- GitHub Actions, first-party actions only. `ci.yml` (push to `main`, PRs, manual): typecheck
+  / lint / format on Linux; unit tests on Linux, macOS, Windows; e2e on macOS and Windows (no
+  Linux — not a target); and the reusable `package.yml`, which builds the installers with
+  `--publish never`, runs `npm run test:packaged` (`e2e/packaged.smoke.ts`: the packaged app
+  in test mode with a temp userData dir — test mode is env-gated only, so it works in
+  packaged builds) and uploads them as artifacts (7 days). On Windows it also installs the
+  NSIS installer silently, smoke-tests the installed exe and uninstalls it.
+- `release.yml` (tag `v*.*.*`): tag must equal `v` + `package.json` version; runs `ci.yml`,
+  then `gh release create --generate-notes` with the artifacts from that same run. Only that
+  last job has `contents: write`.
+- Node for CI comes from `.nvmrc` (24, the Node bundled in Electron 45); `engines` stays
+  `>=22.12.0`. `codeql.yml` (JS/TS, weekly too) and `dependabot.yml` complete the set.
+
 ## 12. Engineering conventions
 
 - No `any`; no non-null assertions without a comment explaining why.
