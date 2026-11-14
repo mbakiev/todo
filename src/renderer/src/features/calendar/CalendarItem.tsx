@@ -1,5 +1,6 @@
 // A task rendered in the month grid: a bar (start → due) or a single-day chip.
 import { useDraggable } from '@dnd-kit/core'
+import { AlertCircle } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import type { LocalDate, Priority, Task } from '@shared/types'
 import { isOverdue } from '@shared/views'
@@ -38,21 +39,27 @@ export function ItemLook({
   continuesAfter = false,
   className,
 }: ItemLookProps) {
+  // Colour rule (shared with the timeline): fill / dot colour follows priority only; overdue
+  // is red title text plus a small alert icon, so it never reads as "critical".
   const overdue = isOverdue(task, today)
   const done = task.status === 'done'
+  const alert = overdue && (
+    <AlertCircle aria-label="Overdue" role="img" className="size-3 shrink-0 text-overdue" />
+  )
   if (kind === 'bar') {
     return (
       <span
         className={cn(
-          'flex h-full w-full min-w-0 items-center px-1.5 text-[12px] leading-none font-medium text-foreground',
+          'flex h-full w-full min-w-0 items-center gap-1 px-1.5 text-[12px] leading-none font-medium text-foreground',
           BAR_CLASS[task.priority],
-          overdue && 'border-overdue bg-overdue/15 text-overdue',
+          overdue && 'text-overdue',
           !continuesBefore && 'rounded-l-[4px] border-l-[3px]',
           !continuesAfter && 'rounded-r-[4px]',
           done && 'opacity-50',
           className,
         )}
       >
+        {alert}
         <span className={cn('truncate', done && 'line-through')}>{task.title}</span>
       </span>
     )
@@ -67,13 +74,9 @@ export function ItemLook({
         className,
       )}
     >
-      <span
-        className={cn(
-          'size-1.5 shrink-0 rounded-full',
-          overdue ? 'bg-overdue' : DOT_CLASS[task.priority],
-        )}
-      />
+      <span className={cn('size-1.5 shrink-0 rounded-full', DOT_CLASS[task.priority])} />
       <span className={cn('truncate', done && 'line-through')}>{task.title}</span>
+      {alert}
     </span>
   )
 }
