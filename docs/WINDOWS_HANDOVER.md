@@ -20,7 +20,7 @@ priority order. File references are to `src/main/` unless stated otherwise.
 git clone <repo> martin-todos; cd martin-todos
 npm ci
 npm run typecheck; npm run lint; npm test   # should all pass as on macOS
-npm run test:e2e                            # Playwright _electron suite (uses a temp userData)
+npm run test:e2e                            # Playwright _electron suite (temp userData + MARTIN_TODOS_E2E=1)
 npm run seed                                # dev app with demo data (<%APPDATA%>\Martins To Dos-dev)
 npm run dist:win                            # → release\0.1.0\MartinsToDos-0.1.0-win-x64-setup.exe
 ```
@@ -97,8 +97,11 @@ previous window, and `prepareToShow()` restores before the next show.
 - [ ] **Shutdown / sign-out / restart** with the app running (window shown *and* hidden):
       Windows must not show "This app is preventing shutdown". Handled by the
       `query-session-end` / `session-end` listeners on the main window, which set
-      `ctx.quitting`. The hidden quick-add window also vetoes `close` unless quitting.
-      Verify both paths.
+      `ctx.quitting`, ask the renderer to save pending edits (`query-session-end`) and close
+      the DB (`session-end`; Windows emits no before-quit / will-quit then — see
+      `quitGate.ts`). The hidden quick-add window also vetoes `close` unless quitting.
+      Verify both paths, and that text typed in a task description just before sign-out is
+      still there afterwards.
 
 ### 3.5 Hidden menu bar + accelerators (`menu.ts`, `mainWindow.ts`)
 - [ ] Menu bar hidden (`autoHideMenuBar` + `setMenuBarVisibility(false)`). `Ctrl+N` (new
@@ -130,7 +133,16 @@ previous window, and `prepareToShow()` restores before the next show.
       Replace all work; dialogs are modal to the main window.
 - [ ] "Reveal data folder" opens Explorer at `%APPDATA%\Martins To Dos\data`.
 - [ ] Backups appear in `%APPDATA%\Martins To Dos\backups\` (startup snapshot ~3 s after
-      launch, then every 24 h, newest 14 kept).
+      launch once there is at least one task, then every 24 h, newest 14 kept; "Back up now"
+      files are `todos-manual-…`, newest 10).
+- [ ] Open the oldest backup in another program (e.g. DB Browser for SQLite) and take
+      backups until it should rotate out: backups keep working (the locked file is skipped
+      and deleted at a later rotation).
+- [ ] Startup problems (`startup.ts`): with the app quit, replace `data\todos.db` with a
+      text file → launch shows "can't read your data file" with Reveal / Restore / Quit;
+      Restore keeps the bad file as `todos.db.broken-…` and opens the backup. Open
+      `todos.db` exclusively in another program → the "locked" message. Check that no
+      `Martins To Dos.exe` is left running after choosing Quit.
 
 ### 3.9 Single instance (`index.ts`)
 - [ ] With the app hidden in the tray, launch it again from Start/desktop: no second

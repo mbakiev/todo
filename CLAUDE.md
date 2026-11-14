@@ -25,4 +25,4 @@ Source of truth for product + architecture: `docs/ARCHITECTURE.md`. Read it befo
 - Feature folders don't import each other (exceptions: task-detail → editor, quick-add dialog → quick-add form).
 - Views put toolbar controls in the shell via `<ToolbarControls>` (`@/app/ToolbarControls`).
 - Do not add npm dependencies without agreement; do not edit shared files from a feature branch of work.
-- Dev data: `<appData>/Martins To Dos-dev`; e2e overrides userData with `MARTIN_TODOS_USER_DATA`.
+- Dev data: `<appData>/Martins To Dos-dev`; e2e overrides userData with `MARTIN_TODOS_USER_DATA` and turns on test mode with `MARTIN_TODOS_E2E=1` (see spec §9 "Environment variables").

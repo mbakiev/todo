@@ -288,7 +288,8 @@ Click header to sort; group-by selector (None / Status / Priority); status filte
 
 ### Timeline (Gantt)
 - Left pane: task titles (sticky). Right pane: horizontally scrolling day grid with a
-  "today" line and weekend shading. Zoom: Day / Week / Month column scale.
+  "today" line and weekend shading. Zoom: Day / Week / Month column scale. An overdue
+  task's left-pane title is red with the calendar's small alert icon.
 - Bar spans `startDate → dueDate`; a task with a single date is a one-day bar. Bar colour
   follows priority; overdue bars are red-outlined.
 - Range starts one week before today. Tasks dated earlier than the range start are
@@ -315,6 +316,9 @@ Contents, top to bottom: title (large inline-editable), property rows — status
 start date, due date (date pickers with Today / Tomorrow / Next week / Clear presets),
 tags (combobox, create-on-type, coloured chips) — then the description editor, then a
 footer with created / updated / completed timestamps, **Copy as Markdown**, and Delete.
+At narrow panel widths the footer shows only "Updated …" (all timestamps in its tooltip)
+with an icon-only Copy button, and the editor toolbar keeps one line by moving its
+least-used buttons (strikethrough, inline code, H3, quote, code block) into a "More" menu.
 
 Everything autosaves: discrete fields immediately, title and description debounced
 (~500 ms) and flushed on blur, panel close, task switch, and window hide. Never lose
