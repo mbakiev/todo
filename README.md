@@ -4,6 +4,8 @@ A personal, local-only desktop task tracker for small tasks captured in passing 
 React + SQLite, macOS and Windows). A global hotkey pops up a quick-add box; date-aware
 boards keep the focus on what matters today. Spec: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
+**Using the app:** see the [User Guide](docs/USER_GUIDE.md).
+
 ## Features
 
 - Quick-add popup from anywhere, with inline tokens: `#tag`, `!high`, `@tomorrow`
