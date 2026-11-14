@@ -275,13 +275,17 @@ test('keyboard: Space picks up, arrows move, Space drops', async () => {
   await setSize(launched)
   await ready(page)
 
-  const card = cards(page, 'not_started').first()
-  const id = await card.getAttribute('data-task-id')
+  const id = await cards(page, 'not_started').first().getAttribute('data-task-id')
+  const card = column(page, 'not_started').locator(`[data-task-id="${id}"]`)
   await card.focus()
+  // Wait on the drag's own state rather than fixed delays: a busy CI runner can take longer
+  // than any sensible timeout to pick the card up or to register the new column.
   await page.keyboard.press('Space')
-  await page.waitForTimeout(150)
+  await expect(card).toHaveAttribute('aria-pressed', 'true')
   await page.keyboard.press('ArrowRight')
-  await page.waitForTimeout(250)
+  await expect(
+    page.locator('[data-testid="board-today"] [data-column="in_progress"][data-drop-target]'),
+  ).toBeVisible()
   await page.keyboard.press('Space')
   await expect(column(page, 'in_progress').locator(`[data-task-id="${id}"]`)).toBeVisible()
 })
