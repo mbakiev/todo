@@ -59,7 +59,7 @@ Config: `electron-builder.yml` (`win`, `nsis`) and `build/installer.nsh`.
 Chromium hides windows without activating another, so on Windows the code does
 `setOpacity(0) → minimize() → hide() → setOpacity(1)` to make Windows activate the
 previous window, and `prepareToShow()` restores before the next show.
-- [ ] From Notepad: `Alt+Shift+N`, type, **Enter** → popup hides, Notepad has focus and a
+- [ ] From Notepad: `Ctrl+Alt+N`, type, **Enter** → popup hides, Notepad has focus and a
       blinking caret, so typing goes into Notepad. Repeat with **Esc**. Repeat from a browser,
       Explorer, and a full-screen/maximized app.
 - [ ] No flash of a minimize animation, no taskbar button blinking.
@@ -67,7 +67,7 @@ previous window, and `prepareToShow()` restores before the next show.
       `minimize()` still takes effect on such a window. If focus does **not** return,
       this is the first suspect.
 - [ ] Clicking elsewhere (blur) hides the popup and keeps the draft (plain `hide()` path).
-- [ ] Same for the main window: `Alt+Shift+T` while it's focused hides it and focus goes
+- [ ] Same for the main window: `Ctrl+Alt+T` while it's focused hides it and focus goes
       back to the previous app (`toggleMainWindow` → `hideMainWindow` → same helper).
 
 ### 3.2 Quick-add window behaviour
@@ -141,8 +141,12 @@ previous window, and `prepareToShow()` restores before the next show.
 - [ ] Startup problems (`startup.ts`): with the app quit, replace `data\todos.db` with a
       text file → launch shows "can't read your data file" with Reveal / Restore / Quit;
       Restore keeps the bad file as `todos.db.broken-…` and opens the backup. Open
-      `todos.db` exclusively in another program → the "locked" message. Check that no
-      `Martins To Dos.exe` is left running after choosing Quit.
+      `todos.db` exclusively in another program → the "locked" message with **Try again** /
+      Reveal / Quit (no restore); Try again keeps failing while the file is held and opens
+      the app once it is released. With the damaged file open in another program (so it
+      can't be renamed), Restore must come back to the dialog saying the file couldn't be
+      moved aside — not exit with a raw error. Check that no `Martins To Dos.exe` is left
+      running after choosing Quit.
 
 ### 3.9 Single instance (`index.ts`)
 - [ ] With the app hidden in the tray, launch it again from Start/desktop: no second
@@ -151,19 +155,27 @@ previous window, and `prepareToShow()` restores before the next show.
 ### 3.10 Window chrome and look
 - [ ] Standard Windows frame/title bar reading "Martin's To Dos"; the renderer has no
       overlap with the frame (mac-only `hiddenInset` isn't applied).
-- [ ] Window icon (`resources/icon.png`, 256 px with macOS-style padding) may look small in
-      the title bar. If so, point the window icon at the `.ico` instead.
+- [ ] Window / taskbar icon: Windows uses the full-bleed `resources/icon.ico` (same tile-cropped
+      artwork as `build/icon.ico`, written by `npm run icons`, shipped via `extraResources`;
+      chosen in `mainWindow.ts` `platformChrome`). It should fill the title-bar and taskbar
+      slot like other apps' icons; Linux keeps `resources/icon.png`.
 - [ ] Bounds/maximized state restored after restart, including after a monitor is
       unplugged (window must come back on-screen).
 - [ ] Light/dark follows Windows' app mode; fonts (Segoe UI) look right; scrollbars OK.
 
 ### 3.11 Default global shortcuts
-- [ ] `Alt+Shift+T` / `Alt+Shift+N` register (Settings → Shortcuts shows no error).
-- [ ] **Known risk:** `Left Alt+Shift` is Windows' default *switch input language*
-      hotkey. On machines with more than one keyboard layout, pressing the shortcut may also
-      switch layout. Check that, plus collisions with apps in use (e.g. some IDEs use
-      `Alt+Shift+N`/`T`; Teams/Office/PowerToys). If it's a problem, pick new defaults
-      (`shared/constants.ts`) such as `Ctrl+Alt+Space` / `Ctrl+Alt+T`.
+- [ ] Windows defaults are `Ctrl+Alt+N` (quick add) / `Ctrl+Alt+T` (show / hide), chosen
+      because left `Alt+Shift` is Windows' default *switch input language* hotkey (macOS
+      keeps `⌥⇧N` / `⌥⇧T`). Resolved in one place: `defaultShortcuts()` in
+      `shared/constants.ts`. Only unset values use them: shortcuts already stored in
+      settings are never rewritten; Settings → Shortcuts → reset uses the Windows default.
+- [ ] On a fresh install both register (Settings → Shortcuts shows "Active").
+- [ ] **Check:** on keyboard layouts where `AltGr` = `Ctrl+Alt` (e.g. Polish, German),
+      `AltGr+N` / `AltGr+T` may produce a character that the shortcut now swallows, or the
+      shortcut may fire while typing. Also check collisions with apps in use (Teams, Office,
+      PowerToys, IDEs).
+- [ ] With the combo taken by another app, opening the main window shows one toast naming
+      the shortcut, with **Change…** opening Settings → Shortcuts.
 
 ## 4. Reporting back
 

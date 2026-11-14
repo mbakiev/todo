@@ -81,7 +81,7 @@ src/
         settings/      Settings dialog
       lib/             Renderer-only helpers
 e2e/                 Playwright electron smoke tests
-resources/           Runtime assets (tray icons)
+resources/           Runtime assets (tray icons; window icon: icon.ico on Windows, icon.png on Linux)
 build/               electron-builder assets (app icons)
 docs/
 ```
@@ -269,13 +269,21 @@ everywhere; due-today in amber.
 
 ### Board (Kanban)
 - Columns in fixed order: Not Started, In Progress, Blocked, Done. Header shows count.
-- Card: title, priority indicator, tag chips, due-date badge (overdue/today coloured),
-  a small icon if it has a description, and checklist progress `n/m` if the description
-  contains Markdown task-list items.
+- Card: title, priority indicator, tag chips, due-date badge (overdue/today coloured) — or,
+  for a task with a start date and no due date, a muted "Starts <date>" badge (own icon,
+  never the overdue/today colours; `dateBadge` in `shared/views.ts`) — a small icon if it has
+  a description, and checklist progress `n/m` if the description contains Markdown
+  task-list items. A card with none of these renders no meta row at all.
+- A task's tags are shown alphabetically by name, case-insensitive, everywhere they appear
+  (cards, list, detail panel, quick add, Copy as Markdown): `tagsInDisplayOrder` /
+  `compareTagsByName` in `shared/views.ts`, `useTaskTags` in the renderer.
 - Drag between columns changes status. Sort selector per board: **Priority** (default:
   priority desc, then due date asc with nulls last, then newest), **Due date**,
   **Manual**. Drag-to-reorder within a column only applies in Manual; in other modes a
-  drag only changes the column. The selected sort persists in settings.
+  drag only changes the column. A drop anywhere inside the board but over no column (the
+  gutters, the padding) resolves to the nearest column and, in Manual, the nearest slot in
+  it (`nearestDropTarget` in `features/board/boardDnd.ts`). The selected sort persists in
+  settings.
 - Inline "+ Add task" at the top of Not Started (title only, Enter to add, stays open
   for the next one).
 - Columns scroll independently. No virtualization on boards (it fights drag-and-drop and open
@@ -297,12 +305,16 @@ Click header to sort; group-by selector (None / Status / Priority); status filte
   chart. Range extends to the latest task date (min 6 weeks ahead).
 - Rows sorted by anchor date. Drag a bar to move it; drag an edge to resize → updates
   dates. Click opens the detail panel.
+- A bar's label sticks to the visible left edge of the grid when the bar's start is
+  scrolled off (until the bar's end pushes it out), at every zoom; the bar clips with
+  `overflow: clip` so it is not a scroll container. A start-only task's tooltip reads
+  "Starts <date>".
 
 ### Calendar
 - Month grid (week start from settings), prev/next/today navigation.
 - A task with both dates renders as a bar spanning start→due (like all-day events);
   a task with one date renders as a chip on that day. Overflow collapses to "+N more"
-  with a popover.
+  with a popover (start-only tasks there carry the muted "Starts <date>" badge).
 - Drag a task to another day to shift its dates (duration preserved). Clicking an empty
   day opens the new-task dialog with due date prefilled.
 - Completed tasks are dimmed and struck through; toggle to hide them.
@@ -332,7 +344,9 @@ cannot stay (window hide, quit, reload/crash) text that could not be saved is ke
 localStorage (`lib/draftRecovery.ts`, keyed by task id + field, with the task's
 `updatedAt`); opening the task again offers it in the field as "Recovered unsaved text ·
 Keep / Discard" — never applied silently. It is cleared once saved or discarded, when the
-saved value already equals it, and at startup when the task no longer exists. Limits are enforced where the user types: the title input
+saved value already equals it, and at startup when the task no longer exists **and** the
+draft is older than 30 days (the soft-delete purge window, so a task restored with Undo after a
+restart still gets its text back). Limits are enforced where the user types: the title input
 stops at 500 characters, and a description over 1,000,000 characters is flagged and not
 sent until shortened.
 
@@ -363,6 +377,10 @@ window — capture should not pull you out of what you were doing.
   priority, due date, and tags.
 - `Enter` in title (or `Cmd/Ctrl+Enter` anywhere) saves and hides. `Esc` hides and
   clears. Losing focus hides but keeps the draft.
+- The window's height follows its content. While a picker popover (priority / date / tags)
+  is open the window grows to fit it below its trigger; the popover stays invisible until the
+  window has grown, so it never shows squeezed or flipped upward, and the hint bar stays on
+  the window's bottom edge (`QuickAddWindow.tsx`).
 - New tasks always land in Not Started.
 - **Inline tokens** in the title, parsed live and stripped from the saved title. Each value
   is shown once: a parsed priority / due date appears in its control (changing or clearing
@@ -384,11 +402,25 @@ window — capture should not pull you out of what you were doing.
   Quit (tray, app menu, `Cmd+Q`) exits. On macOS the dock icon remains and re-shows the
   window on click.
 - **Global shortcuts** (configurable in Settings via a shortcut recorder; registration
-  failures are surfaced in Settings, never silent):
-  - Toggle main window: default `Alt+Shift+T`
-  - Quick add: default `Alt+Shift+N`
+  failures are surfaced in Settings, never silent). Defaults are per platform, resolved only
+  in `defaultShortcuts()` (`shared/constants.ts`) and used only for values never stored —
+  existing settings are not rewritten; "reset to default" uses the platform default:
+  - Toggle main window: macOS `Alt+Shift+T`; Windows / Linux `Ctrl+Alt+T`
+  - Quick add: macOS `Alt+Shift+N`; Windows / Linux `Ctrl+Alt+N`
+
+  (Left `Alt+Shift` is Windows' "switch keyboard layout" hotkey.) When the main window is on
+  screen and a shortcut failed to register (taken or invalid), one non-blocking toast names it
+  and its action, with "Change…" opening Settings → Shortcuts: once per app run per failing
+  combo (sessionStorage), never for a shortcut that is turned off, re-evaluated whenever the
+  status changes (`app/useShortcutFailureToast.ts`). While the recorder listens the shortcuts
+  are suspended; main resumes them itself if the suspending webContents is destroyed,
+  crashes, reloads or navigates (`main/shortcutSuspension.ts`).
 - **In-app shortcuts**: `Cmd/Ctrl+N` new task, `Cmd/Ctrl+F` focus search,
   `Cmd/Ctrl+1…6` switch view, `Cmd/Ctrl+,` settings, `Esc` close panel/dialog.
+- **Shortcut display**: one formatter, `formatShortcut` / `shortcutParts` in
+  `renderer/src/lib/shortcuts.ts` (over `shared/accelerators.ts`), turns every shortcut into
+  text — menus, tooltips, dialog footers, Settings, the recorder, the quick-add hint bar.
+  macOS: `⌃ ⌥ ⇧ ⌘` then the key (`⇧⌘↩`); Windows: `Ctrl+Alt+Shift+Win+Key`.
 - **Launch at login** toggle (packaged builds only).
 - **Window chrome**: macOS `titleBarStyle: 'hiddenInset'` with a drag region in the
   sidebar/toolbar; Windows uses the standard frame with the menu bar hidden. Window
@@ -402,7 +434,7 @@ export / import / backup controls.
 `shortcuts.quickAdd`, `launchAtLogin`, `boardSort` (one value per board:
 `{ today, week, everything }`), `detailPanelWidth`, `lastView`, `windowBounds` (main-window
 bounds; main process only).
-Stored in the `settings` table; defaults in `shared/constants.ts`.
+Stored in the `settings` table; defaults in `shared/constants.ts` (`defaultSettings(platform)`).
 
 ### Backup, export, import
 - **Backups** (`<userData>/backups/`, VACUUM INTO snapshots). Retention is per kind, encoded
@@ -431,12 +463,19 @@ Opening the database runs through `main/startup.ts` (decisions and file operatio
 unit-tested `services/startupRecovery.ts`). The process never lingers without a window:
 - **Cannot open / migrate** the DB → native dialog with a cause-specific message: created by
   a **newer version** (no restore offered — it would drop the newer data), **damaged /
-  unreadable**, or **locked** by another program. Buttons: **Reveal data folder**,
-  **Restore latest backup** (only when a backup exists and the cause is not "newer version"),
-  **Quit**. Restore moves the bad file aside as `todos.db.broken-<YYYYMMDD-HHmmss>` (plus
-  `-wal` / `-shm` if present; nothing is ever deleted), copies the newest backup of any kind
-  into place and continues startup (a backup that also fails is skipped next time). Anything
-  but a successful restore quits.
+  unreadable**, or **locked** by another program. Buttons per cause:
+  - locked: **Try again** (re-attempts the open; can be pressed repeatedly), **Reveal data
+    folder** (then asks again), **Quit**. No restore: a locked file cannot be moved aside.
+  - damaged: **Reveal data folder**, **Restore latest backup** (only when a backup exists),
+    **Quit**. Restore moves the bad file aside as `todos.db.broken-<YYYYMMDD-HHmmss>` (plus
+    `-wal` / `-shm` if present; nothing is ever deleted), copies the newest backup of any kind
+    into place and continues startup (a backup that also fails is skipped next time). If
+    moving aside fails for any reason, whatever moved is put back and the dialog returns
+    saying so plainly.
+  - newer version: **Reveal data folder**, **Quit**.
+
+  Quit (and Reveal, except for "locked") quits; so does a backup copy that fails after the
+  file was moved aside. The loop: `openDatabaseWithRecoveryFlow` (`services/startupRecovery.ts`).
 - **DB file missing but backups exist** → **Restore latest backup** / **Start fresh** /
   **Quit**, instead of silently creating an empty database.
 - Any other startup exception shows an error box and exits.
@@ -444,7 +483,9 @@ unit-tested `services/startupRecovery.ts`). The process never lingers without a 
 ### Renderer crashes and quitting
 - A renderer that crashes or is killed (main or quick-add window) is reloaded. Three crashes
   within 60 s stop the loop and ask **Quit** / **Try again** instead. A hung renderer gets a
-  **Wait** / **Reload** prompt. A quick-add window destroyed outside a real quit is recreated
+  **Wait** / **Reload** prompt only after it has been unresponsive for 10 s without
+  recovering; the prompt closes itself if the window becomes responsive and is shown at most
+  once per freeze (`createHangWatch` in `windows/crashRecovery.ts`). A quick-add window destroyed outside a real quit is recreated
   hidden.
 - Every quit (tray Quit, app menu / `Cmd+Q`, SIGTERM / SIGINT) goes through one quit gate
   (`main/quitGate.ts`): the quit is held until the main window's renderer has saved pending
@@ -459,7 +500,7 @@ unit-tested `services/startupRecovery.ts`). The process never lingers without a 
 | `MARTIN_TODOS_E2E=1` | e2e test mode only: fake global-shortcut registrar, no login-item changes, `__martinTodosTest` main-process hooks, and the test switches below. Set by `e2e/launch.ts`. |
 | `MARTIN_TODOS_HIDE_WINDOW=1` | (test mode only) keep the main window hidden. |
 | `MARTIN_TODOS_FAKE_TAKEN_SHORTCUTS=<a,b>` | (test mode only) accelerators the fake registrar refuses. |
-| `MARTIN_TODOS_STARTUP_DIALOG_CHOICE=<choice>` | (test mode only) answers the startup-problem dialog without showing it (`reveal`, `restore`, `fresh`, `quit`). |
+| `MARTIN_TODOS_STARTUP_DIALOG_CHOICE=<choice>` | (test mode only) answers the startup-problem dialog without showing it (`retry`, `reveal`, `restore`, `fresh`, `quit`); a comma-separated list answers successive dialogs (the last repeats). |
 | `MARTIN_TODOS_CRASH_DIALOG_CHOICE=<quit\|reload>` | (test mode only) answers the renderer crash-loop dialog. |
 
 A launch without `MARTIN_TODOS_E2E=1` behaves exactly like production.
@@ -480,6 +521,12 @@ no theme gallery.
   controls, New task button) · detail panel on the right.
 - Subtle motion only (panel slide, drag overlay). Empty states get one line of helpful
   text, not illustrations.
+- Tooltips (all through `components/ui/tooltip.tsx`) open on hover, or on focus only after
+  keyboard navigation (Tab / arrows) — never from programmatic focus such as a menu handing
+  focus back to its trigger. An open tooltip never consumes Esc: it closes and the same key
+  press reaches the panel / dialog / popover underneath.
+- The detail panel's header takes the toolbar's height (`--toolbar-height`, one or two rows)
+  so their bottom borders line up.
 
 ## 11. Naming & packaging
 

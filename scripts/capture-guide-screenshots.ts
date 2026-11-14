@@ -229,6 +229,14 @@ function demoTasks(today: LocalDate): DemoTask[] {
       createdDaysAgo: 2,
     },
     {
+      // Start date only: cards show a muted "Starts <day>" badge.
+      title: 'Start the Q1 OKR draft',
+      priority: 2,
+      start: endOfWeek,
+      tags: ['planning'],
+      createdDaysAgo: 1,
+    },
+    {
       title: 'Plan the team offsite agenda',
       priority: 2,
       start: w(14),
@@ -294,6 +302,24 @@ function demoTasks(today: LocalDate): DemoTask[] {
 // ---------------------------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------------------------
+
+/**
+ * The guide shows the app as users get it: drop the " · development" suffix from the Settings
+ * footer (this script runs an unpackaged build). Only the screenshots' page is touched — a
+ * watcher in the renderer blanks that text node whenever the dialog renders it.
+ */
+const HIDE_DEV_SUFFIX = `(() => {
+  const strip = () => {
+    const about = document.querySelector('[data-testid="about"]')
+    if (!about) return
+    const walker = document.createTreeWalker(about, NodeFilter.SHOW_TEXT)
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (n.data === ' · development') n.data = ''
+    }
+  }
+  new MutationObserver(strip).observe(document.body, { childList: true, subtree: true })
+  strip()
+})()`
 
 /** Drops focus in the page (runs in the renderer, so no DOM types needed here). */
 function blurActive(): void {
@@ -442,6 +468,7 @@ test('user guide screenshots', async () => {
     env: { MARTIN_TODOS_FAKE_TAKEN_SHORTCUTS: TAKEN_SHORTCUT },
   })
   const { app, page } = shell
+  await page.evaluate(HIDE_DEV_SUFFIX)
   await resizeMainWindow(app, WIDTH, HEIGHT)
   await page.waitForTimeout(300)
   await expect(page.locator('[data-testid="board-today"] [data-task-id]').first()).toBeVisible()
@@ -578,6 +605,7 @@ test('user guide screenshots', async () => {
   const settings = page.getByTestId('settings-dialog')
   await expect(settings).toBeVisible()
 
+  await expect(settings.getByTestId('about')).not.toContainText('development')
   await settings.locator('[data-section="shortcuts"]').click()
   // Record a new Show / hide shortcut that "another app" already owns, the way a user would.
   await settings.getByRole('button', { name: 'Show / hide window shortcut' }).click()

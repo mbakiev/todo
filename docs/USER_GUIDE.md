@@ -21,7 +21,7 @@ computer; there is no account and no sync.
 
 ## 2. Capture a task in seconds
 
-Press `⌥⇧N` (Windows: `Alt+Shift+N`) in any app. A small window appears over whatever you are
+Press `⌥⇧N` (Windows: `Ctrl+Alt+N`) in any app. A small window appears over whatever you are
 doing; the main window stays where it is.
 
 ![The quick-add window, empty, with priority, due date and tag controls](screenshots/quick-add-empty.png)
@@ -53,7 +53,7 @@ The tokens are removed from the saved title. Rules that surprise people:
 **Two other ways to add a task** in the main window:
 
 - `⌘N` (`Ctrl+N`) or **New task** opens the same form as a dialog, with a **Start date**
-  control and a **Create more** switch; `⌘⇧Enter` (`Ctrl+Shift+Enter`) saves and starts
+  control and a **Create more** switch; `⇧⌘Enter` (`Ctrl+Shift+Enter`) saves and starts
   another.
 - **+ Add task** at the top of Not Started: type a title (tokens work), press `Enter`, and the
   box stays open for the next one.
@@ -69,8 +69,9 @@ or, without one, its due date — is today or earlier. Overdue tasks stay until 
 them; future work stays hidden. A task due next Friday with no start date does not appear on
 Today until that Friday. To see it sooner, give it a start date: it shows up from that day.
 
-**Columns.** Drag a card to another column to change its status. Done shows only what you
-finished today, so it starts empty each morning.
+**Columns.** Drag a card to another column to change its status (dropping it in the gap
+between two columns puts it in the nearer one). Done shows only what you finished today, so it
+starts empty each morning.
 
 ![A card being dragged from Not Started into In Progress, which is highlighted as the drop target](screenshots/board-drag.png)
 
@@ -88,8 +89,9 @@ finished today, so it starts empty each morning.
 ![A card: High priority icon, "Tomorrow" due badge, checklist progress 2/4, and the planning and meeting tags](screenshots/board-card.png)
 
 Before the title: the priority (bars for Low to High, a red triangle for Critical). Below it:
-the due date (red when overdue, amber when due today), checklist progress (`2/4`) or a small
-lines icon when there is a description, and the tags.
+the due date (red when overdue, amber when due today) — or, for a task with only a start date,
+a grey **Starts …** — checklist progress (`2/4`) or a small lines icon when there is a
+description, and the tags in alphabetical order.
 
 ## 4. This Week and Everything
 
@@ -169,7 +171,8 @@ row. `↑`/`↓` move through rows, `Enter` opens one.
 
 **Timeline** shows dated open tasks as bars from start to due (one date = one day), coloured
 by priority. Pick **Day**, **Week** or **Month** zoom; **Today** scrolls back. Drag a bar to
-move it, or an end to change the start or due date. The chart starts a week before today:
+move it, or an end to change the start or due date. A long bar's title stays in view when you
+scroll past its start. The chart starts a week before today:
 older tasks are pinned to the left edge with their real date ("due Nov 1"), and overdue
 titles are red. **Completed** shows finished tasks too.
 
@@ -189,7 +192,7 @@ tray (Windows), so the quick-add hotkey always works. Its menu has **Open Martin
 **New Task**, **Settings…** and **Quit**; on Windows, clicking the icon shows or hides the
 window.
 
-- `⌥⇧T` (`Alt+Shift+T`) shows or hides the main window from any app.
+- `⌥⇧T` (`Ctrl+Alt+T`) shows or hides the main window from any app.
 - To quit: **Quit** in the menu bar / tray menu, or `⌘Q` on macOS.
 - **Launch at login** (Settings → General) starts the app quietly in the menu bar / tray.
 - **Appearance** (Settings → General): System, Light or Dark.
@@ -202,7 +205,10 @@ combination (`Esc` cancels). The reset button restores the default; × turns the
 ![Recording a new shortcut: the Quick add field shows the keys held so far and "Esc to cancel"](screenshots/shortcut-recorder.png)
 
 If another app already uses the combination, the field turns red and says **Already in use by
-another app or by the system**. Pick a different one.
+another app or by the system**. Pick a different one. The same goes for a shortcut that stops
+working later (say, a newly installed app took it): the next time the main window opens, a
+message names the shortcut, with **Change…** to go straight to Settings → Shortcuts. It is
+shown once per app run, and never for a shortcut you turned off.
 
 ![Settings, Shortcuts: Show / hide window was set to a combination another app already uses and shows the warning](screenshots/settings-shortcuts.png)
 
@@ -229,12 +235,21 @@ The database is in `data/todos.db` and backups in `backups/`. Settings → Data 
   replaces everything with the file's contents. Both take a safety backup of your current data
   first (the newest 5 are kept).
 
-**If the database can't be opened** when the app starts, a dialog explains why: the file is
-damaged, another program is using it, or it was created by a newer version of the app. It
-offers **Reveal data folder**, **Restore latest backup** (when a backup exists, and not for the
-newer-version case) and **Quit**. Restoring keeps the bad file next to it as
-`todos.db.broken-…`; nothing is deleted. If the database file is missing but backups exist,
-you can choose **Restore latest backup** or **Start fresh**.
+**If the database can't be opened** when the app starts, a dialog explains why and what you
+can do:
+
+- **Another program is using the file** (another copy of the app, a backup or sync tool):
+  close that program and choose **Try again** (as often as needed). **Reveal data folder**
+  shows the file and then asks again; **Quit** quits. Your data is fine, so no restore is
+  offered.
+- **The file is damaged**: **Restore latest backup** (when a backup exists) keeps the bad file
+  next to it as `todos.db.broken-…` and starts from the backup; nothing is deleted. If the
+  file can't be moved aside, the dialog says so and nothing changes. There are also **Reveal
+  data folder** and **Quit**.
+- **It was created by a newer version of the app**: **Reveal data folder** or **Quit**.
+
+If the database file is missing but backups exist, you can choose **Restore latest backup** or
+**Start fresh**.
 
 ## 10. Suggested routines
 
@@ -264,8 +279,8 @@ you can choose **Restore latest backup** or **Start fresh**.
 | Action | macOS | Windows |
 |---|---|---|
 | **Global (from any app)** | | |
-| Quick add | `⌥⇧N` | `Alt+Shift+N` |
-| Show / hide window | `⌥⇧T` | `Alt+Shift+T` |
+| Quick add | `⌥⇧N` | `Ctrl+Alt+N` |
+| Show / hide window | `⌥⇧T` | `Ctrl+Alt+T` |
 | **In the app** | | |
 | New task | `⌘N` | `Ctrl+N` |
 | Search | `⌘F` | `Ctrl+F` |
@@ -275,16 +290,18 @@ you can choose **Restore latest backup** or **Start fresh**.
 | **Quick add and New task dialog** | | |
 | Save | `Enter` | `Enter` |
 | Save from the notes field | `⌘Enter` | `Ctrl+Enter` |
-| Save and add another (dialog) | `⌘⇧Enter` | `Ctrl+Shift+Enter` |
+| Save and add another (dialog) | `⇧⌘Enter` | `Ctrl+Shift+Enter` |
 | Move to notes (quick add) | `Tab` | `Tab` |
 | **Description editor** | | |
 | Bold / italic | `⌘B` / `⌘I` | `Ctrl+B` / `Ctrl+I` |
-| Strikethrough / inline code | `⌘⇧S` / `⌘E` | `Ctrl+Shift+S` / `Ctrl+E` |
-| Heading 1–3 | `⌘⌥1`–`⌘⌥3` | `Ctrl+Alt+1`–`Ctrl+Alt+3` |
-| Bulleted / numbered list | `⌘⇧8` / `⌘⇧7` | `Ctrl+Shift+8` / `Ctrl+Shift+7` |
-| Checklist | `⌘⇧9` | `Ctrl+Shift+9` |
+| Strikethrough / inline code | `⇧⌘S` / `⌘E` | `Ctrl+Shift+S` / `Ctrl+E` |
+| Heading 1–3 | `⌥⌘1`–`⌥⌘3` | `Ctrl+Alt+1`–`Ctrl+Alt+3` |
+| Bulleted / numbered list | `⇧⌘8` / `⇧⌘7` | `Ctrl+Shift+8` / `Ctrl+Shift+7` |
+| Checklist | `⇧⌘9` | `Ctrl+Shift+9` |
 | Link | `⌘K` | `Ctrl+K` |
 | Open a link | `⌘`-click | `Ctrl`-click |
 | Leave the editor (press again to close the panel) | `Esc` | `Esc` |
 
-The global shortcuts can be changed in Settings → Shortcuts.
+The global shortcuts can be changed in Settings → Shortcuts; the reset button there restores
+the default for your system. (Windows avoids `Alt+Shift` combinations because left
+`Alt+Shift` also switches the keyboard layout.)

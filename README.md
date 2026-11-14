@@ -19,14 +19,17 @@ boards keep the focus on what matters today. Spec: [`docs/ARCHITECTURE.md`](docs
 
 | Action | macOS | Windows |
 |---|---|---|
-| Quick add (global) | `⌥⇧N` | `Alt+Shift+N` |
-| Show / hide app (global) | `⌥⇧T` | `Alt+Shift+T` |
+| Quick add (global) | `⌥⇧N` | `Ctrl+Alt+N` |
+| Show / hide app (global) | `⌥⇧T` | `Ctrl+Alt+T` |
 | New task | `⌘N` | `Ctrl+N` |
 | Search | `⌘F` | `Ctrl+F` |
 | Switch view | `⌘1`…`⌘6` | `Ctrl+1`…`Ctrl+6` |
 | Settings | `⌘,` | `Ctrl+,` |
 
-Global shortcuts can be changed in Settings → Shortcuts.
+Global shortcuts can be changed in Settings → Shortcuts (Windows and Linux default to
+`Ctrl+Alt`, because left `Alt+Shift` is Windows' keyboard-layout switch). Shortcuts already
+stored in settings are never rewritten. If one can't be registered (another app owns it),
+the app says so once when its window opens, with a button to change it.
 
 ## Where data lives
 
@@ -45,9 +48,10 @@ on Windows a user environment variable `MARTIN_TODOS_USER_DATA=D:\todos`. It onl
 the app behaves exactly as usual. (`MARTIN_TODOS_E2E=1` is the separate switch the e2e
 tests use for test mode; never set it for normal use.)
 
-If the database cannot be opened at startup (damaged file, locked by another program, or
-created by a newer version) the app says so in a dialog and offers to reveal the data folder
-or restore the newest backup (the unreadable file is kept as `todos.db.broken-<timestamp>`).
+If the database cannot be opened at startup the app says so in a dialog: a file **locked**
+by another program offers Try again / Reveal data folder / Quit; a **damaged** file offers to
+restore the newest backup (the unreadable file is kept as `todos.db.broken-<timestamp>`); one
+**created by a newer version** offers Reveal / Quit.
 
 ## Backup, export, import
 
