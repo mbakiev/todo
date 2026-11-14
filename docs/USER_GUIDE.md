@@ -134,8 +134,8 @@ could save, the field shows **Recovered unsaved text** with **Keep** or **Discar
 time you open the task.
 
 **Mark complete** (top left) moves the task to Done; click **Completed** to reopen it (it
-goes back to Not Started). The trash icon (bottom right) deletes the task; a **Task deleted** message with **Undo**
-appears for a few seconds.
+goes back to Not Started). The trash icon (bottom right) deletes the task; a **Task deleted**
+message with **Undo** appears for a few seconds.
 
 ## 6. Stay organised
 
@@ -176,7 +176,7 @@ titles are red. **Completed** shows finished tasks too.
 ![Timeline at Week zoom: an overdue task pinned at the left edge, multi-day bars and one-day bars](screenshots/timeline-week.png)
 
 **Calendar** shows a month. Tasks with a start and due date are bars; tasks with one date
-are a line on that day; **+N more** lists the rest of a full day. Drag a task to another day
+are a single entry on that day; **+N more** lists the rest of a full day. Drag a task to another day
 to move it (multi-day tasks keep their length). Click an empty part of a day to add a task
 due then. Finished tasks are struck through; **Completed** hides them.
 
