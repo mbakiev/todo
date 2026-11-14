@@ -4,7 +4,7 @@ import { expect, test, type ElectronApplication, type Locator, type Page } from 
 import { addDays, formatRelativeDate, startOfMonth, todayLocal } from '../src/shared/dates'
 import type { Api, CreateTaskInput } from '../src/shared/ipc'
 import type { Task } from '../src/shared/types'
-import { resizeMainWindow, windowByEntry } from './launch'
+import { pickUpWithKeyboard, resizeMainWindow, windowByEntry } from './launch'
 import { launchShell, MOD, openQuickAdd, type ShellApp } from './shellHelpers'
 
 let shell: ShellApp | undefined
@@ -229,9 +229,7 @@ test('Esc: a drag or an overlay consumes it before the detail panel', async () =
   // Board keyboard drag: Space picks up, Esc cancels — the panel stays.
   const id = await second.getAttribute('data-task-id')
   const statusBefore = await second.getAttribute('data-status')
-  await second.focus()
-  await page.keyboard.press('Space')
-  await page.waitForTimeout(150)
+  await pickUpWithKeyboard(page, second)
   await page.keyboard.press('ArrowRight')
   await expect(page.locator('.board-drag-overlay')).toBeVisible() // really dragging
   await page.keyboard.press('Escape')

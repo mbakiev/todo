@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import {
   _electron as electron,
+  expect,
   type ElectronApplication,
   type Locator,
   type Page,
@@ -78,6 +79,36 @@ export async function resizeMainWindow(
     },
     [w, h] as const,
   )
+  // The `resize` event for that new size is only dispatched at the next rendering update,
+  // which on slow runners can come well after `innerWidth` changed. Let it pass (resize
+  // steps run before animation-frame callbacks), so it cannot land in the middle of the
+  // test's next action: a keyboard drag, for one, cancels itself on `resize`.
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        (
+          globalThis as unknown as { requestAnimationFrame(cb: () => void): number }
+        ).requestAnimationFrame(() => resolve()),
+      ),
+  )
+}
+
+/**
+ * Focuses a board card, picks it up with Space and returns once the drag listens for keys.
+ *
+ * dnd-kit's KeyboardSensor marks the card pressed straight away but only starts listening
+ * for the next keys (arrows, Space to drop, Escape) in a `setTimeout(0)` queued by the
+ * pickup. Playwright sends keys far faster than a person, and on GitHub's macOS runners that
+ * timer has been seen to run 60-180 ms after the pickup, while key events kept being
+ * delivered: an arrow sent as soon as the card looks pressed was simply dropped. Timers with
+ * the same delay run in the order they were queued, so a `setTimeout(0)` queued from here
+ * (after the card is pressed) only fires once the sensor's own timer has run.
+ */
+export async function pickUpWithKeyboard(page: Page, card: Locator): Promise<void> {
+  await card.focus()
+  await page.keyboard.press('Space')
+  await expect(card).toHaveAttribute('aria-pressed', 'true')
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 0)))
 }
 
 /**
