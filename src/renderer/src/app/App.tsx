@@ -25,7 +25,7 @@ export function App() {
   return (
     <TooltipProvider delayDuration={400}>
       <ToolbarSlotContext.Provider value={toolbarSlot}>
-        <div className="flex h-full w-full overflow-hidden">
+        <div className="relative flex h-full w-full overflow-hidden">
           <Sidebar />
           <main className="flex min-w-0 flex-1 flex-col">
             <Toolbar slotRef={setToolbarSlot} />
@@ -35,7 +35,12 @@ export function App() {
           </main>
           {selectedTaskId && (
             // The panel owns its width, border, resize handle and animation.
-            <aside className="flex min-h-0 shrink-0" data-slot="detail-panel">
+            // Too narrow to dock it beside a usable view (sidebar 208 + panel min 360 + view
+            // 320), the panel floats over the view instead of squeezing it.
+            <aside
+              className="flex min-h-0 shrink-0 max-[887px]:absolute max-[887px]:inset-y-0 max-[887px]:right-0 max-[887px]:z-30 max-[887px]:shadow-xl"
+              data-slot="detail-panel"
+            >
               <TaskDetailPanel taskId={selectedTaskId} />
             </aside>
           )}

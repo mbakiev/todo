@@ -222,7 +222,7 @@ test('screenshots (light + dark, each zoom)', async () => {
     )
     for (const zoom of ['day', 'week', 'month'] as const) {
       await page.locator(`[data-zoom="${zoom}"]`).click()
-      await page.getByRole('button', { name: 'Today', exact: true }).click()
+      await page.getByRole('button', { name: 'Scroll to today' }).click()
       await page.waitForTimeout(450)
       await page.screenshot({ path: join(SHOTS, `timeline-${zoom}-${theme}.png`) })
     }

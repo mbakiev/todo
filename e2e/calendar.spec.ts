@@ -167,7 +167,7 @@ test('hides completed tasks with the toggle', async () => {
   const page = await openCalendar(false)
   await createTasks(page, [{ title: 'Finished thing', dueDate: day(12), status: 'done' }])
   await expect(page.locator('[data-task-id]', { hasText: 'Finished thing' })).toBeVisible()
-  await page.getByRole('switch', { name: 'Show completed tasks' }).click()
+  await page.getByRole('button', { name: 'Show completed' }).click()
   await expect(page.locator('[data-task-id]', { hasText: 'Finished thing' })).toHaveCount(0)
 })
 

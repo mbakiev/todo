@@ -1,5 +1,10 @@
 import { CircleCheck, Rows3 } from 'lucide-react'
-import { ToolbarControls } from '@/app/ToolbarControls'
+import {
+  SEGMENT_CLASS,
+  SEGMENTED_CLASS,
+  ToolbarButton,
+  ToolbarControls,
+} from '@/app/ToolbarControls'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -9,7 +14,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { cn } from '@/lib/utils'
 import { ZOOMS, ZOOM_LABELS, type Zoom } from './timelineGeometry'
 import { GROUP_BY_LABELS, type GroupBy } from './timelineRows'
 
@@ -43,41 +47,37 @@ export function TimelineToolbar({
           if (v) onZoom(v as Zoom)
         }}
         aria-label="Zoom"
-        className="h-7 gap-0.5 rounded-md bg-muted p-0.5"
+        className={SEGMENTED_CLASS}
       >
         {ZOOMS.map((z) => (
           <ToggleGroupItem
             key={z}
             value={z}
             data-zoom={z}
-            className="h-6 min-w-0 rounded-[5px] px-2 text-xs font-normal text-muted-foreground hover:bg-transparent hover:text-foreground data-[state=on]:bg-background data-[state=on]:font-medium data-[state=on]:text-foreground data-[state=on]:shadow-xs"
+            className={SEGMENT_CLASS}
           >
             {ZOOM_LABELS[z]}
           </ToggleGroupItem>
         ))}
       </ToggleGroup>
       <Button
-        variant="ghost"
+        variant="outline"
         size="sm"
-        className="h-7 px-2 text-[13px] font-normal"
+        className="h-7 px-2.5 text-xs shadow-none"
         onClick={onToday}
+        aria-label="Scroll to today"
       >
         Today
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
+          <ToolbarButton
+            icon={<Rows3 className="size-3.5" />}
+            label={groupBy === 'none' ? 'Group' : GROUP_BY_LABELS[groupBy]}
+            hint={groupBy === 'none' ? 'Group rows' : `Grouped by ${GROUP_BY_LABELS[groupBy]}`}
             aria-label="Group by"
-            className={cn(
-              'h-7 gap-1.5 px-2 text-[13px] font-normal',
-              groupBy !== 'none' && 'bg-selection text-primary',
-            )}
-          >
-            <Rows3 className="size-3.5" />
-            {groupBy === 'none' ? 'Group' : GROUP_BY_LABELS[groupBy]}
-          </Button>
+            active={groupBy !== 'none'}
+          />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-40">
           <DropdownMenuRadioGroup value={groupBy} onValueChange={(v) => onGroupBy(v as GroupBy)}>
@@ -89,20 +89,15 @@ export function TimelineToolbar({
           </DropdownMenuRadioGroup>
         </DropdownMenuContent>
       </DropdownMenu>
-      <Button
-        variant="ghost"
-        size="sm"
+      <ToolbarButton
+        icon={<CircleCheck className="size-3.5" />}
+        label="Completed"
+        hint={showCompleted ? 'Hide completed tasks' : 'Show completed tasks'}
         aria-pressed={showCompleted}
         aria-label="Show completed"
-        className={cn(
-          'h-7 gap-1.5 px-2 text-[13px] font-normal',
-          showCompleted && 'bg-selection text-primary',
-        )}
+        active={showCompleted}
         onClick={() => onShowCompleted(!showCompleted)}
-      >
-        <CircleCheck className="size-3.5" />
-        Completed
-      </Button>
+      />
     </ToolbarControls>
   )
 }

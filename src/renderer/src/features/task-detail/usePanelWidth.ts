@@ -5,8 +5,11 @@ import { DEFAULT_SETTINGS, DETAIL_PANEL_MAX_WIDTH, DETAIL_PANEL_MIN_WIDTH } from
 import { useSettings } from '@/stores/selectors'
 import { useSettingsStore } from '@/stores/settingsStore'
 
-/** Space always left for the sidebar + main view. */
-const MIN_MAIN_AREA = 440
+/**
+ * Space always left for the sidebar (208px) + main view, so the view under an open panel keeps
+ * a usable toolbar and content (the panel never goes below its own minimum, though).
+ */
+const MIN_MAIN_AREA = 640
 
 export function clampPanelWidth(width: number, windowWidth: number): number {
   const max = Math.max(

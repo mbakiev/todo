@@ -12,7 +12,7 @@ import {
   type DragOverEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CircleCheck } from 'lucide-react'
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import {
   addDays,
@@ -27,11 +27,10 @@ import {
 } from '@shared/dates'
 import type { LocalDate, Task } from '@shared/types'
 import { filterCalendar, taskSpan, tasksInRange } from '@shared/views'
-import { ToolbarControls } from '@/app/ToolbarControls'
+import { ToolbarButton, ToolbarControls } from '@/app/ToolbarControls'
 import { TaskContextMenu } from '@/components/task'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useToday } from '@/lib/useToday'
 import { cn } from '@/lib/utils'
@@ -116,20 +115,21 @@ function CalendarToolbar({ month, today }: { month: LocalDate; today: LocalDate 
         </Tooltip>
       </div>
       <span
-        className="ml-1.5 min-w-32 text-[13px] font-medium whitespace-nowrap"
+        className="ml-1.5 min-w-30 text-[13px] font-medium whitespace-nowrap tabular-nums"
         data-testid="calendar-month-label"
       >
         {monthLabelFormat.format(localDateToDate(month))}
       </span>
-      <label className="ml-2 flex items-center gap-2 text-xs whitespace-nowrap text-muted-foreground">
-        <Switch
-          size="sm"
-          checked={showCompleted}
-          onCheckedChange={setShowCompleted}
-          aria-label="Show completed tasks"
-        />
-        Show completed
-      </label>
+      <ToolbarButton
+        className="ml-1"
+        icon={<CircleCheck className="size-3.5" />}
+        label="Completed"
+        hint={showCompleted ? 'Hide completed tasks' : 'Show completed tasks'}
+        aria-pressed={showCompleted}
+        aria-label="Show completed"
+        active={showCompleted}
+        onClick={() => setShowCompleted(!showCompleted)}
+      />
     </ToolbarControls>
   )
 }

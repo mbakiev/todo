@@ -15,12 +15,12 @@ import {
   type Updater,
 } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronRight, Rows3 } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { STATUSES, STATUS_LABELS } from '@shared/constants'
 import { formatRelativeDate, localDateOfTimestamp } from '@shared/dates'
 import type { LocalDate, Status, Task } from '@shared/types'
-import { ToolbarControls } from '@/app/ToolbarControls'
+import { ToolbarButton, ToolbarControls } from '@/app/ToolbarControls'
 import {
   DueDateBadge,
   PriorityIcon,
@@ -30,7 +30,6 @@ import {
   TaskContextMenu,
   TaskTags,
 } from '@/components/task'
-import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -298,16 +297,13 @@ function ListToolbar({ counts }: { counts: Record<Status, number> }) {
     <ToolbarControls>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 gap-1 px-2.5 text-xs font-normal shadow-none"
+          <ToolbarButton
+            icon={<Rows3 className="size-3.5" />}
+            label={groupBy === 'none' ? 'Group' : groupLabel}
+            hint={groupBy === 'none' ? 'Group rows' : `Grouped by ${groupLabel}`}
             aria-label={`Group by: ${groupLabel}`}
-          >
-            <span className="text-muted-foreground">Group</span>
-            <span className="font-medium">{groupLabel}</span>
-            <ChevronDown className="size-3 text-muted-foreground" />
-          </Button>
+            active={groupBy !== 'none'}
+          />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-40">
           <DropdownMenuRadioGroup

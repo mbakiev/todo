@@ -1,5 +1,6 @@
 // Sort selector shown in the shell toolbar; persisted per board in settings.boardSort.
 import type { BoardScope, BoardSort } from '@shared/types'
+import { SEGMENT_CLASS, SEGMENTED_CLASS } from '@/app/ToolbarControls'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useSettingsStore } from '@/stores/settingsStore'
 
@@ -16,11 +17,10 @@ function isBoardSort(v: string): v is BoardSort {
 export function BoardSortControl({ scope, sort }: { scope: BoardScope; sort: BoardSort }) {
   return (
     <div className="flex items-center gap-1.5">
-      <span className="text-xs text-muted-foreground">Sort</span>
+      <span className="text-xs text-muted-foreground @max-[960px]/toolbar:sr-only">Sort</span>
       <ToggleGroup
         type="single"
-        size="sm"
-        variant="outline"
+        className={SEGMENTED_CLASS}
         value={sort}
         onValueChange={(v) => {
           if (isBoardSort(v) && v !== sort) {
@@ -34,7 +34,7 @@ export function BoardSortControl({ scope, sort }: { scope: BoardScope; sort: Boa
             key={s.value}
             value={s.value}
             title={s.hint}
-            className="h-7 px-2.5 text-xs"
+            className={SEGMENT_CLASS}
           >
             {s.label}
           </ToggleGroupItem>
