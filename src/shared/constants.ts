@@ -91,6 +91,12 @@ export const VIEW_LABELS: Record<ViewId, string> = {
 
 export const BOARD_SCOPES: readonly BoardScope[] = ['today', 'week', 'everything']
 
+/** What each global shortcut does, as shown in Settings, errors and the failure toast. */
+export const GLOBAL_SHORTCUT_LABELS: Record<keyof Settings['shortcuts'], string> = {
+  quickAdd: 'Quick add',
+  toggleApp: 'Show / hide window',
+}
+
 export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
   weekStartsOn: 1,

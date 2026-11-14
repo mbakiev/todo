@@ -10,6 +10,7 @@ import { Sidebar } from './Sidebar'
 import { Toolbar } from './Toolbar'
 import { ToolbarSlotContext } from './toolbarSlotContext'
 import { useShellShortcuts } from './useShellShortcuts'
+import { useShortcutFailureToast } from './useShortcutFailureToast'
 import { ViewSwitch } from './ViewSwitch'
 
 /**
@@ -19,6 +20,7 @@ import { ViewSwitch } from './ViewSwitch'
 export function App() {
   useApplyTheme()
   useShellShortcuts()
+  useShortcutFailureToast()
   const [toolbarSlot, setToolbarSlot] = useState<HTMLElement | null>(null)
   const selectedTaskId = useUiStore((s) => s.selectedTaskId)
 

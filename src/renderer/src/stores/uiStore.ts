@@ -12,6 +12,8 @@ export interface NewTaskPrefill {
   tagIds?: string[]
 }
 
+export type SettingsSection = 'general' | 'shortcuts' | 'tags' | 'data'
+
 export interface UiState {
   activeView: ViewId
   /** Task shown in the detail panel; null = panel closed. */
@@ -19,6 +21,8 @@ export interface UiState {
   filter: TaskFilter
   newTaskDialog: { open: boolean; prefill: NewTaskPrefill }
   settingsOpen: boolean
+  /** Section the Settings dialog shows. */
+  settingsSection: SettingsSection
   /** Incremented to ask the toolbar search box to focus (Cmd/Ctrl+F). */
   searchFocusRequest: number
 
@@ -39,7 +43,9 @@ export interface UiState {
   clearFilter(): void
   openNewTaskDialog(prefill?: NewTaskPrefill): void
   closeNewTaskDialog(): void
-  setSettingsOpen(open: boolean): void
+  /** Opening shows `section` (default General). */
+  setSettingsOpen(open: boolean, section?: SettingsSection): void
+  setSettingsSection(section: SettingsSection): void
   requestSearchFocus(): void
 }
 
@@ -69,6 +75,7 @@ export const useUiStore = create<UiState>()((set, get) => ({
   filter: EMPTY_FILTER,
   newTaskDialog: { open: false, prefill: {} },
   settingsOpen: false,
+  settingsSection: 'general',
   searchFocusRequest: 0,
 
   setActiveView: (activeView) => set({ activeView }),
@@ -106,6 +113,8 @@ export const useUiStore = create<UiState>()((set, get) => ({
     set((s) => (s.newTaskDialog.open ? s : { newTaskDialog: { open: true, prefill } })),
   closeNewTaskDialog: () =>
     set((s) => ({ newTaskDialog: { open: false, prefill: s.newTaskDialog.prefill } })),
-  setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
+  setSettingsOpen: (settingsOpen, section = 'general') =>
+    set(settingsOpen ? { settingsOpen, settingsSection: section } : { settingsOpen }),
+  setSettingsSection: (settingsSection) => set({ settingsSection }),
   requestSearchFocus: () => set((s) => ({ searchFocusRequest: s.searchFocusRequest + 1 })),
 }))

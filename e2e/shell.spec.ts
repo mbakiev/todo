@@ -332,3 +332,38 @@ test('export → wipe → import round-trips the data (merge and replace)', asyn
   const qaTags = await qa.evaluate(() => (globalThis as unknown as W).api.tags.list())
   expect(qaTags).toHaveLength(tagsBefore.length)
 })
+
+test('a global shortcut that failed to register is announced once, with a way to change it', async () => {
+  // Both platforms' defaults for Quick add are refused.
+  shell = await launchShell({
+    env: { MARTIN_TODOS_FAKE_TAKEN_SHORTCUTS: 'Alt+Shift+N,Control+Alt+N' },
+  })
+  const { page } = shell
+  const toast = page.locator('[data-sonner-toast]', {
+    hasText: /Quick add shortcut .* isn't working/,
+  })
+  await expect(toast).toBeVisible()
+  await expect(toast).toContainText('in use')
+  await toast.getByRole('button', { name: 'Change…' }).click()
+  const dialog = page.getByTestId('settings-dialog')
+  await expect(dialog).toBeVisible()
+  await expect(dialog.locator('[data-section-content="shortcuts"]')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+
+  // Once per app run: a reload of the window does not repeat it.
+  await page.reload()
+  await page.waitForSelector('[data-slot="view"]')
+  await page.waitForTimeout(800)
+  await expect(page.locator('[data-sonner-toast]')).toHaveCount(0)
+
+  // Re-evaluated when shortcuts change: a newly failing combo is announced.
+  await page.evaluate(() =>
+    (globalThis as unknown as W).api.settings.set({ shortcuts: { toggleApp: 'Control+Alt+N' } }),
+  )
+  await expect(
+    page.locator('[data-sonner-toast]', {
+      hasText: /Show \/ hide window shortcut .* isn't working/,
+    }),
+  ).toBeVisible()
+})

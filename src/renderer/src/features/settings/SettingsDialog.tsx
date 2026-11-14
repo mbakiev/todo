@@ -2,19 +2,19 @@
 // with the app name and version at the bottom. Mounted by the shell, driven by
 // uiStore.settingsOpen.
 import { Database, Keyboard, SlidersHorizontal, Tag as TagIcon, X } from 'lucide-react'
-import { useEffect, useState, type ComponentType } from 'react'
+import type { ComponentType } from 'react'
 import { APP_DISPLAY_NAME } from '@shared/constants'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { appInfo } from '@/lib/platform'
 import { cn } from '@/lib/utils'
-import { useUiStore } from '@/stores/uiStore'
+import { useUiStore, type SettingsSection } from '@/stores/uiStore'
 import { DataSection } from './DataSection'
 import { GeneralSection } from './GeneralSection'
 import { ShortcutsSection } from './ShortcutsSection'
 import { TagsSection } from './TagsSection'
 
-type SectionId = 'general' | 'shortcuts' | 'tags' | 'data'
+type SectionId = SettingsSection
 
 const SECTIONS: Array<{
   id: SectionId
@@ -37,19 +37,14 @@ const CONTENT: Record<SectionId, ComponentType> = {
 export function SettingsDialog() {
   const open = useUiStore((s) => s.settingsOpen)
   const setOpen = useUiStore((s) => s.setSettingsOpen)
-  const [section, setSection] = useState<SectionId>('general')
+  const section = useUiStore((s) => s.settingsSection)
+  const setSection = useUiStore((s) => s.setSettingsSection)
   const { version, isDev } = appInfo()
   const current = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0]
   const Content = CONTENT[section]
 
-  // Re-open on General next time unless the dialog is reopened right away.
-  useEffect(() => {
-    if (!open) return
-    return () => setSection('general')
-  }, [open])
-
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(next) => setOpen(next)}>
       <DialogContent
         showCloseButton={false}
         className="flex h-[min(560px,calc(100vh-4rem))] gap-0 overflow-hidden p-0 sm:max-w-[780px]"

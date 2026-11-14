@@ -1,7 +1,7 @@
 import { AlertTriangle, CheckCircle2, RotateCcw, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { acceleratorsEqual } from '@shared/accelerators'
-import { DEFAULT_SETTINGS } from '@shared/constants'
+import { DEFAULT_SETTINGS, GLOBAL_SHORTCUT_LABELS as LABELS } from '@shared/constants'
 import type { Settings, ShortcutStatus } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -18,16 +18,15 @@ type Name = keyof Settings['shortcuts']
 const GLOBAL: Array<{ name: Name; label: string; description: string }> = [
   {
     name: 'quickAdd',
-    label: 'Quick add',
+    label: LABELS.quickAdd,
     description: 'Opens the small capture window from anywhere.',
   },
   {
     name: 'toggleApp',
-    label: 'Show / hide window',
+    label: LABELS.toggleApp,
     description: 'Brings the main window forward, or hides it when it is in front.',
   },
 ]
-const LABELS: Record<Name, string> = { quickAdd: 'Quick add', toggleApp: 'Show / hide window' }
 
 function useShortcutStatus(): ShortcutStatus | null {
   const [status, setStatus] = useState<ShortcutStatus | null>(null)

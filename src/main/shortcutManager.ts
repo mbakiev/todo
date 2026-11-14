@@ -1,14 +1,11 @@
 // Pure global-shortcut registration logic (no Electron import) — unit-tested with a fake
 // registrar in shortcutManager.test.ts. Wired to Electron's globalShortcut in shortcuts.ts.
 import { normalizeAccelerator } from '@shared/accelerators'
+import { GLOBAL_SHORTCUT_LABELS as LABELS } from '@shared/constants'
 import type { Platform, Settings, ShortcutStatus } from '@shared/types'
 
 export type ShortcutName = keyof Settings['shortcuts']
 const NAMES: readonly ShortcutName[] = ['toggleApp', 'quickAdd']
-const LABELS: Record<ShortcutName, string> = {
-  toggleApp: 'Show / hide window',
-  quickAdd: 'Quick add',
-}
 
 export interface ShortcutRegistrar {
   /** Returns false when the OS refuses (combo owned by another app); throws if invalid. */
