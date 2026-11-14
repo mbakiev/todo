@@ -234,5 +234,9 @@ test('at its minimum width the panel stays on one line: compact footer, collapse
   await page.locator('[data-task-id]').first().click()
   await expect(panel(page).getByRole('button', { name: 'Quote' })).toBeVisible()
   await expect(panel(page).getByRole('button', { name: 'More formatting' })).toBeHidden()
-  await expect(panel(page).locator('footer').getByText(/^Created /)).toBeVisible()
+  await expect(
+    panel(page)
+      .locator('footer')
+      .getByText(/^Created /),
+  ).toBeVisible()
 })
