@@ -31,6 +31,27 @@ async function mainWindowPage(app: ElectronApplication): Promise<Page> {
 }
 
 /**
+ * Resizes the main window. Never use `BrowserWindow.getAllWindows()[0]`: the hidden quick-add
+ * window exists too and may come first.
+ */
+export async function resizeMainWindow(
+  app: ElectronApplication,
+  width: number,
+  height: number,
+): Promise<void> {
+  await app.evaluate(
+    ({ BrowserWindow }, [w, h]) => {
+      const win = BrowserWindow.getAllWindows().find((x) =>
+        x.webContents.getURL().split(/[?#]/)[0]?.endsWith('/index.html'),
+      )
+      if (!win) throw new Error('main window not found')
+      win.setSize(w, h)
+    },
+    [width, height] as const,
+  )
+}
+
+/**
  * Launches the built app (`out/main/index.js`) against a fresh temp userData dir
  * (MARTIN_TODOS_USER_DATA), so tests never touch real or dev data.
  */
@@ -52,4 +73,26 @@ export async function launchApp(options: { seed?: boolean } = {}): Promise<Launc
       rmSync(userData, { recursive: true, force: true })
     },
   }
+}
+
+/**
+ * Inserts tasks straight through the main-process repos in one transaction (test runs only),
+ * then reloads the main window so the renderer picks them up. Thousands of tasks take well
+ * under a second, versus ~30 s one by one over IPC.
+ */
+export async function bulkCreateTasks(
+  launched: Pick<LaunchedApp, 'app' | 'page'>,
+  tasks: Array<Record<string, unknown> & { title: string }>,
+): Promise<void> {
+  await launched.app.evaluate((_electron, input) => {
+    const hooks = (
+      globalThis as unknown as {
+        __martinTodosTest?: Record<string, (...args: unknown[]) => unknown>
+      }
+    ).__martinTodosTest
+    if (!hooks?.bulkCreateTasks) throw new Error('bulkCreateTasks hook missing')
+    return hooks.bulkCreateTasks(input)
+  }, tasks)
+  await launched.page.reload()
+  await launched.page.waitForSelector('[data-slot="view"]')
 }

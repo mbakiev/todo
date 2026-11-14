@@ -4,7 +4,7 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import type { Api } from '../src/shared/ipc'
-import { launchApp, type LaunchedApp } from './launch'
+import { launchApp, resizeMainWindow, type LaunchedApp } from './launch'
 
 const OUT = join(__dirname, 'screenshots')
 let launched: LaunchedApp
@@ -49,7 +49,7 @@ async function drag(
 }
 
 async function setSize(l: LaunchedApp): Promise<void> {
-  await l.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setSize(1400, 860))
+  await resizeMainWindow(l.app, 1400, 860)
 }
 
 async function ready(page: Page): Promise<void> {

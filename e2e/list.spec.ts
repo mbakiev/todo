@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
 import type { Api } from '../src/shared/ipc'
 import type { Task } from '../src/shared/types'
-import { launchApp, type LaunchedApp } from './launch'
+import { bulkCreateTasks, launchApp, resizeMainWindow, type LaunchedApp } from './launch'
 
 const OUT = join(__dirname, 'screenshots')
 let launched: LaunchedApp
@@ -16,7 +16,7 @@ test.afterEach(async () => {
 async function openList(options: { seed?: boolean } = { seed: true }): Promise<Page> {
   launched = await launchApp(options)
   const { page, app } = launched
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setSize(1400, 860))
+  await resizeMainWindow(app, 1400, 860)
   await page.locator('[data-view="list"]').click()
   await expect(page.getByTestId('list-view')).toBeVisible()
   return page
@@ -162,21 +162,15 @@ test('shows empty states', async () => {
 })
 
 test('virtualizes 5,000 rows', async () => {
+  // Inserted in one main-process transaction (creating them over IPC took ~30 s).
   const page = await openList({ seed: false })
-  await page.evaluate(async () => {
-    const api = (globalThis as unknown as { api: Api }).api
-    for (let i = 0; i < 5000; i += 250) {
-      await Promise.all(
-        Array.from({ length: 250 }, (_, j) =>
-          api.tasks.create({
-            title: `Bulk task ${String(i + j).padStart(4, '0')}`,
-            priority: (((i + j) % 4) + 1) as 1 | 2 | 3 | 4,
-          }),
-        ),
-      )
-    }
-  })
-  await page.reload()
+  await bulkCreateTasks(
+    launched,
+    Array.from({ length: 5000 }, (_, i) => ({
+      title: `Bulk task ${String(i).padStart(4, '0')}`,
+      priority: (i % 4) + 1,
+    })),
+  )
   await page.locator('[data-view="list"]').click()
   await expect(page.getByRole('table', { name: 'Tasks' })).toHaveAttribute('aria-rowcount', '5000')
   const rendered = await rows(page).count()

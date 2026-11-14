@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
 import type { Api } from '../src/shared/ipc'
 import type { Task } from '../src/shared/types'
-import { launchApp, type LaunchedApp } from './launch'
+import { launchApp, resizeMainWindow, type LaunchedApp } from './launch'
 
 const OUT = join(__dirname, 'screenshots')
 let launched: LaunchedApp
@@ -168,7 +168,7 @@ test('screenshots: detail panel (light + dark)', async () => {
   mkdirSync(OUT, { recursive: true })
   launched = await launchApp({ seed: true })
   const { page, app } = launched
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setSize(1400, 900))
+  await resizeMainWindow(app, 1400, 900)
   await openTask(page, 'Q4 planning follow-ups')
   await page.waitForTimeout(300)
   await page.screenshot({ path: join(OUT, 'detail-panel-light.png') })

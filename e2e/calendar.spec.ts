@@ -5,7 +5,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { addMonths, startOfMonth, todayLocal } from '../src/shared/dates'
 import type { Api, CreateTaskInput } from '../src/shared/ipc'
 import type { Task } from '../src/shared/types'
-import { launchApp, type LaunchedApp } from './launch'
+import { launchApp, resizeMainWindow, type LaunchedApp } from './launch'
 
 const OUT = join(__dirname, 'screenshots')
 let launched: LaunchedApp
@@ -21,7 +21,7 @@ const day = (n: number): string =>
 async function openCalendar(seed = true): Promise<Page> {
   launched = await launchApp({ seed })
   const { page, app } = launched
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setSize(1400, 860))
+  await resizeMainWindow(app, 1400, 860)
   await page.locator('[data-view="calendar"]').click()
   await expect(page.getByTestId('calendar-view')).toBeVisible()
   return page
@@ -157,9 +157,7 @@ test('"+N more" opens a popover listing the day\'s tasks; click opens detail', a
 
   // Shrinking the window shows fewer lanes → more hidden.
   const before = Number((await more.innerText()).match(/\d+/)?.[0])
-  await launched.app.evaluate(({ BrowserWindow }) =>
-    BrowserWindow.getAllWindows()[0]?.setSize(1400, 600),
-  )
+  await resizeMainWindow(launched.app, 1400, 600)
   await expect
     .poll(async () => Number((await more.innerText()).match(/\d+/)?.[0]))
     .toBeGreaterThan(before)

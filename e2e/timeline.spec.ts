@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import type { Api } from '../src/shared/ipc'
 import type { Task } from '../src/shared/types'
-import { launchApp, type LaunchedApp } from './launch'
+import { launchApp, resizeMainWindow, type LaunchedApp } from './launch'
 
 const SHOTS = join(__dirname, 'screenshots')
 let launched: LaunchedApp
@@ -42,7 +42,7 @@ function bar(page: Page, id: string): Locator {
 async function setup(): Promise<{ page: Page; ancient: Task }> {
   launched = await launchApp({ seed: true })
   const { page, app } = launched
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setSize(1400, 860))
+  await resizeMainWindow(app, 1400, 860)
   const ancient = await page.evaluate(
     (due) =>
       (globalThis as unknown as WithApi).api.tasks.create({

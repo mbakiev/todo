@@ -5,7 +5,9 @@
 // OS shutdown / logout; `before-quit` (and the Windows session-end events in
 // mainWindow.ts) set `ctx.quitting` so windows are then allowed to close.
 import { app, nativeTheme, powerMonitor, session, type BrowserWindow } from 'electron'
+import { z } from 'zod'
 import { IPC } from '@shared/ipc'
+import { taskCreateInputSchema } from '@shared/schemas'
 import type { DataChange, Settings, ShortcutStatus } from '@shared/types'
 import { broadcast } from './broadcast'
 import type { AppContext } from './context'
@@ -110,6 +112,11 @@ async function bootstrap(): Promise<void> {
       showQuickAdd: () => showQuickAdd(ctx),
       hideQuickAdd: () => hideQuickAdd(ctx),
       isQuitting: () => ctx.quitting,
+      // Fast bulk inserts for e2e (e.g. the 5,000-row list test); validated like IPC input.
+      bulkCreateTasks: (inputs: unknown) => {
+        const parsed = z.array(taskCreateInputSchema).parse(inputs)
+        return repos.db.transaction(() => parsed.map((i) => repos.tasks.create(i).task.id)).length
+      },
     })
   }
 

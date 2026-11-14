@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
 import type { Api } from '../src/shared/ipc'
-import { launchApp, type LaunchedApp } from './launch'
+import { launchApp, resizeMainWindow, type LaunchedApp } from './launch'
 
 const OUT = join(__dirname, 'screenshots')
 let launched: LaunchedApp
@@ -16,7 +16,7 @@ test('shell renders seeded data (light + dark)', async () => {
   mkdirSync(OUT, { recursive: true })
   launched = await launchApp({ seed: true })
   const { page, app } = launched
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setSize(1400, 860))
+  await resizeMainWindow(app, 1400, 860)
 
   await expect(page.locator('[data-testid="board-today"] [data-task-id]').first()).toBeVisible()
   await page.screenshot({ path: join(OUT, 'today-light.png') })
