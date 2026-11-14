@@ -5,6 +5,7 @@ export default defineConfig({
   timeout: 60_000,
   fullyParallel: false,
   workers: 1,
-  reporter: [['list']],
+  // CI also writes an HTML report (playwright-report/), uploaded as an artifact on failure.
+  reporter: process.env['CI'] ? [['list'], ['html', { open: 'never' }]] : [['list']],
   use: { trace: 'retain-on-failure' },
 })
