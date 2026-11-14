@@ -1,5 +1,5 @@
 // Helpers for the desktop-shell e2e specs: launching against a reusable userData dir,
-// the main-process test hooks (installed only when MARTIN_TODOS_USER_DATA is set), and
+// the main-process test hooks (installed only when MARTIN_TODOS_E2E=1), and
 // window visibility checks.
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -30,6 +30,7 @@ export async function launchShell(
     env: {
       ...process.env,
       MARTIN_TODOS_USER_DATA: userData,
+      MARTIN_TODOS_E2E: '1',
       ELECTRON_RENDERER_URL: '',
       ...options.env,
     },

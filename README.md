@@ -31,14 +31,28 @@ Global shortcuts can be changed in Settings → Shortcuts.
 | | macOS | Windows |
 |---|---|---|
 | Database | `~/Library/Application Support/Martins To Dos/data/todos.db` | `%APPDATA%\Martins To Dos\data\todos.db` |
-| Backups (newest 14) | `…/Martins To Dos/backups/` | `%APPDATA%\Martins To Dos\backups\` |
+| Backups | `…/Martins To Dos/backups/` | `%APPDATA%\Martins To Dos\backups\` |
 | Dev builds (`npm run dev`) | `…/Martins To Dos-dev/` | `%APPDATA%\Martins To Dos-dev\` |
 
 Settings → Data & backup → "Reveal data folder" opens it. Uninstalling keeps your data.
 
+**Custom data location:** set `MARTIN_TODOS_USER_DATA` to a folder before starting the app
+and everything (database, backups, settings) lives there instead, e.g. on macOS
+`MARTIN_TODOS_USER_DATA=~/todos "/Applications/Martins To Dos.app/Contents/MacOS/Martins To Dos"`,
+on Windows a user environment variable `MARTIN_TODOS_USER_DATA=D:\todos`. It only moves the data;
+the app behaves exactly as usual. (`MARTIN_TODOS_E2E=1` is the separate switch the e2e
+tests use for test mode; never set it for normal use.)
+
+If the database cannot be opened at startup (damaged file, locked by another program, or
+created by a newer version) the app says so in a dialog and offers to reveal the data folder
+or restore the newest backup (the unreadable file is kept as `todos.db.broken-<timestamp>`).
+
 ## Backup, export, import
 
-- A snapshot is taken at startup and every 24 h; "Back up now" takes one on demand.
+- A snapshot is taken at startup and every 24 h (newest 14 kept; skipped while the database
+  has no tasks at all). "Back up now" copies are kept separately (newest 10), as are the
+  safety copies taken before **Replace all** (newest 5), so neither can push out the daily
+  history.
 - **Export** writes one JSON file with all tasks and tags.
 - **Import** a JSON export: **Merge** (newer edit wins) or **Replace all** (backs up first).
 

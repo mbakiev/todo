@@ -53,13 +53,19 @@ export async function resizeMainWindow(
 
 /**
  * Launches the built app (`out/main/index.js`) against a fresh temp userData dir
- * (MARTIN_TODOS_USER_DATA), so tests never touch real or dev data.
+ * (MARTIN_TODOS_USER_DATA) in test mode (MARTIN_TODOS_E2E=1), so tests never touch real or dev
+ * data, real global shortcuts or login items.
  */
 export async function launchApp(options: { seed?: boolean } = {}): Promise<LaunchedApp> {
   const userData = mkdtempSync(join(tmpdir(), 'martin-todos-e2e-'))
   const app = await electron.launch({
     args: [resolve(__dirname, '../out/main/index.js'), ...(options.seed ? ['--seed'] : [])],
-    env: { ...process.env, MARTIN_TODOS_USER_DATA: userData, ELECTRON_RENDERER_URL: '' },
+    env: {
+      ...process.env,
+      MARTIN_TODOS_USER_DATA: userData,
+      MARTIN_TODOS_E2E: '1',
+      ELECTRON_RENDERER_URL: '',
+    },
   })
   // The hidden quick-add window is created at startup too; pick the main window by entry.
   const page = await mainWindowPage(app)

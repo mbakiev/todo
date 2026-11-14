@@ -3,7 +3,7 @@ import { APP_DISPLAY_NAME } from '@shared/constants'
 import { IPC } from '@shared/ipc'
 import type { WindowBounds } from '@shared/types'
 import type { AppContext } from '../context'
-import { resourcePath } from '../paths'
+import { isTestRun, resourcePath } from '../paths'
 import { hideWindowReturningFocus, prepareToShow } from './hideWindow'
 import { loadRenderer } from './loadRenderer'
 import { requestRendererFlush } from './rendererFlush'
@@ -72,7 +72,7 @@ export function createMainWindow(
 
   win.once('ready-to-show', () => {
     // E2E runs may ask for the window to stay hidden.
-    if (show && process.env['MARTIN_TODOS_HIDE_WINDOW'] !== '1') win.show()
+    if (show && !(isTestRun && process.env['MARTIN_TODOS_HIDE_WINDOW'] === '1')) win.show()
   })
 
   // Persist bounds (debounced) on move/resize and once more on close.

@@ -388,6 +388,17 @@ Stored in the `settings` table; defaults in `shared/constants.ts`.
   newer `updatedAt` wins; tags matched by id then by name) or **Replace all** (takes an
   automatic backup first). Runs in one transaction; returns counts.
 
+### Environment variables
+| Variable | Effect |
+|---|---|
+| `MARTIN_TODOS_USER_DATA=<dir>` | Uses `<dir>` as userData (DB, backups, settings). A supported "custom data location"; changes nothing else. |
+| `MARTIN_TODOS_E2E=1` | e2e test mode only: fake global-shortcut registrar, no login-item changes, `__martinTodosTest` main-process hooks, and the test switches below. Set by `e2e/launch.ts`. |
+| `MARTIN_TODOS_HIDE_WINDOW=1` | (test mode only) keep the main window hidden. |
+| `MARTIN_TODOS_FAKE_TAKEN_SHORTCUTS=<a,b>` | (test mode only) accelerators the fake registrar refuses. |
+| `MARTIN_TODOS_STARTUP_DIALOG_CHOICE=<choice>` | (test mode only) answers the startup-problem dialog without showing it. |
+
+A launch without `MARTIN_TODOS_E2E=1` behaves exactly like production.
+
 ## 10. Visual design
 
 Clean, quiet, modern — in the spirit of Linear / Things. No gradients, no heavy shadows,
