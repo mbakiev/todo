@@ -37,10 +37,17 @@ class NodeSqliteDb implements Db {
   constructor(readonly path: string) {
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true })
     this.db = new DatabaseSync(path, { enableForeignKeyConstraints: true })
-    if (path !== ':memory:') this.db.exec('PRAGMA journal_mode = WAL')
-    this.db.exec('PRAGMA synchronous = NORMAL')
-    this.db.exec('PRAGMA foreign_keys = ON')
-    this.db.exec('PRAGMA busy_timeout = 5000')
+    try {
+      // First, so every later PRAGMA (journal_mode needs a lock) waits for another process
+      // holding the file instead of failing immediately with SQLITE_BUSY.
+      this.db.exec('PRAGMA busy_timeout = 5000')
+      if (path !== ':memory:') this.db.exec('PRAGMA journal_mode = WAL')
+      this.db.exec('PRAGMA synchronous = NORMAL')
+      this.db.exec('PRAGMA foreign_keys = ON')
+    } catch (err) {
+      this.db.close()
+      throw err
+    }
   }
 
   private stmt(sql: string): StatementSync {
@@ -86,13 +93,24 @@ class NodeSqliteDb implements Db {
     this.depth++
     try {
       const result = fn()
-      this.depth--
+      // A failing COMMIT / RELEASE (e.g. a deferred foreign-key violation) lands in the catch
+      // below and is rolled back there like any other error.
       this.db.exec(outer ? 'COMMIT' : `RELEASE ${sp}`)
       return result
     } catch (err) {
-      this.depth--
-      this.db.exec(outer ? 'ROLLBACK' : `ROLLBACK TO ${sp}; RELEASE ${sp}`)
+      // SQLite may already have rolled back on its own (e.g. SQLITE_FULL, or a nested
+      // savepoint whose outer transaction is gone); a rollback error must never mask `err`.
+      try {
+        if (this.db.isTransaction) {
+          this.db.exec(outer ? 'ROLLBACK' : `ROLLBACK TO ${sp}; RELEASE ${sp}`)
+        }
+      } catch (rollbackErr) {
+        console.error('Rollback failed after a transaction error', rollbackErr)
+      }
       throw err
+    } finally {
+      // Exactly once per transaction(), whatever happened above.
+      this.depth--
     }
   }
 
