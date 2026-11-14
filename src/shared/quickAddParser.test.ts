@@ -80,7 +80,7 @@ describe('parseQuickAdd', () => {
   it('strips trailing punctuation from tokens', () => {
     const r = parse('Plan offsite #team, then book @fri.')
     expect(r.tagNames).toEqual(['team'])
-    expect(r.dueDate).toBe('2026-11-13')
+    expect(r.dueDate).toBe('2026-11-20')
     expect(r.title).toBe('Plan offsite , then book .')
   })
 
@@ -100,12 +100,31 @@ describe('parseDateToken', () => {
     expect(parseDateToken('tmr', today)).toBe('2026-11-14')
     expect(parseDateToken('nextweek', today, 1)).toBe('2026-11-16')
   })
-  it('weekdays: next occurrence, today counts', () => {
-    expect(parseDateToken('fri', today)).toBe('2026-11-13')
+  it('weekdays: the next occurrence strictly after today', () => {
+    expect(parseDateToken('fri', today)).toBe('2026-11-20') // today is a Friday
     expect(parseDateToken('sat', today)).toBe('2026-11-14')
     expect(parseDateToken('monday', today)).toBe('2026-11-16')
     expect(parseDateToken('thu', today)).toBe('2026-11-19')
   })
+
+  // Every weekday token against every "today" in one week (Sun 2026-11-08 … Sat 2026-11-14).
+  const names = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const
+  for (let todayDow = 0; todayDow < 7; todayDow++) {
+    const day = `2026-11-${String(8 + todayDow).padStart(2, '0')}`
+    it(`weekdays relative to a ${names[todayDow]} (${day})`, () => {
+      names.forEach((name, dow) => {
+        const result = parseDateToken(name, day) ?? ''
+        const [y, m, d] = result.split('-').map(Number) as [number, number, number]
+        const resultDate = new Date(y, m - 1, d, 12)
+        const daysAhead = Math.round(
+          (resultDate.getTime() - new Date(2026, 10, 8 + todayDow, 12).getTime()) / 86_400_000,
+        )
+        expect(resultDate.getDay()).toBe(dow) // the named weekday…
+        expect(daysAhead).toBeGreaterThanOrEqual(1) // …strictly after today…
+        expect(daysAhead).toBeLessThanOrEqual(7) // …and its next occurrence
+      })
+    })
+  }
   it('ISO dates', () => {
     expect(parseDateToken('2026-12-01', today)).toBe('2026-12-01')
     expect(parseDateToken('2026-02-30', today)).toBeNull()

@@ -2,6 +2,7 @@
 //   #word            → tag (created if new). Digits-only (`#1234`) is NOT a tag.
 //   !low !med !high !crit (also !medium !critical, !1–!4) → priority
 //   @today @tomorrow @fri @nov20 @2026-12-01 … → due date; only consumed if it parses
+//                      (a bare weekday is the next one strictly after today)
 //                      as a date, so `@john` stays in the title.
 // Tokens must start at the beginning of the input or after whitespace.
 
@@ -89,9 +90,10 @@ export function parseDateToken(
 
   const weekday = WEEKDAYS[word]
   if (weekday !== undefined) {
-    // Next occurrence, counting today: `@fri` on a Friday means today.
+    // Next occurrence strictly after today: `@fri` on a Friday means next Friday
+    // (`@today` exists for today).
     const todayDow = localDateToDate(today).getDay()
-    return addDays(today, (weekday - todayDow + 7) % 7)
+    return addDays(today, (weekday - todayDow + 7) % 7 || 7)
   }
 
   // Letters must contain at least one digit or a known date word for chrono to try;
