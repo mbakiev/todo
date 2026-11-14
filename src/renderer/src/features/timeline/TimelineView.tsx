@@ -34,23 +34,19 @@ import {
   scrollLeftFor,
   weekendOffsetDays,
   weekStartOffsetDays,
-  ZOOMS,
   type DateRange,
   type DragMode,
   type TaskDates,
   type Zoom,
 } from './timelineGeometry'
-import { buildTimelineRows, type GroupBy, type TimelineRow } from './timelineRows'
+import { buildTimelineRows, type TimelineRow } from './timelineRows'
 import { useBarDrag, type DragPreview } from './useBarDrag'
-import { usePersistentState } from './usePersistentState'
+import { useTimelineViewStore } from './timelineViewStore'
 
 const LEFT_W = 260
 const ROW_H = 32
 const GROUP_ROW_H = 30
 
-const isZoom = (v: unknown): v is Zoom => typeof v === 'string' && ZOOMS.includes(v as Zoom)
-const isGroupBy = (v: unknown): v is GroupBy => v === 'none' || v === 'status' || v === 'priority'
-const isBool = (v: unknown): v is boolean => typeof v === 'boolean'
 
 /** Grid background: weekend shading + day/week lines as repeating CSS gradients. */
 function gridStyle(range: DateRange, zoom: Zoom, weekStartsOn: WeekStartsOn): CSSProperties {
@@ -87,14 +83,14 @@ export function TimelineView() {
   const { weekStartsOn } = useSettings()
   const selectedTaskId = useUiStore((s) => s.selectedTaskId)
 
-  const [zoom, setZoomState] = usePersistentState<Zoom>('timeline.zoom', 'day', isZoom)
-  const [groupBy, setGroupBy] = usePersistentState<GroupBy>('timeline.groupBy', 'none', isGroupBy)
-  const [showCompleted, setShowCompleted] = usePersistentState<boolean>(
-    'timeline.showCompleted',
-    false,
-    isBool,
-  )
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set())
+  const zoom = useTimelineViewStore((s) => s.zoom)
+  const setZoomState = useTimelineViewStore((s) => s.setZoom)
+  const groupBy = useTimelineViewStore((s) => s.groupBy)
+  const setGroupBy = useTimelineViewStore((s) => s.setGroupBy)
+  const showCompleted = useTimelineViewStore((s) => s.showCompleted)
+  const setShowCompleted = useTimelineViewStore((s) => s.setShowCompleted)
+  const collapsed = useTimelineViewStore((s) => s.collapsed)
+  const toggleGroup = useTimelineViewStore((s) => s.toggleCollapsed)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -185,15 +181,6 @@ export function TimelineView() {
   const scrollToToday = useCallback(() => {
     scrollRef.current?.scrollTo({ left: scrollLeftFor(today, range, zoom), behavior: 'smooth' })
   }, [today, range, zoom])
-
-  const toggleGroup = useCallback((key: string) => {
-    setCollapsed((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
-  }, [])
 
   const onRowClick = useCallback(
     (taskId: string) => {

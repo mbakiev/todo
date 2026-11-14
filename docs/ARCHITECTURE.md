@@ -249,6 +249,10 @@ everywhere; due-today in amber.
 ### Shared across all views
 - **Filter bar**: text search (title + description), tag multi-select, priority
   multi-select. Lives in `uiStore`, applies to whichever view is active.
+- **View preferences** (list sort / grouping / status chips / collapsed groups, timeline
+  zoom / grouping / show-completed, calendar show-completed) persist per device in
+  localStorage through one helper (`lib/viewPrefs.ts`, zustand `persist`, keys
+  `martin-todos.viewPrefs.<view>`). They are not Settings and are not exported.
 - Clicking a task anywhere opens the **detail panel** (`uiStore.selectedTaskId`).
 - Right-click a task → context menu: set status, set priority, due Today / Tomorrow /
   Next week / Clear, Delete.
