@@ -3,7 +3,7 @@
 
 import { DEFAULT_PRIORITY } from '@shared/constants'
 import type { CreateTaskInput } from '@shared/ipc'
-import { parseQuickAdd } from '@shared/quickAddParser'
+import { parseQuickAdd, titleLengthError } from '@shared/quickAddParser'
 import type { LocalDate, Tag, WeekStartsOn } from '@shared/types'
 
 export function buildInlineCreateInput(
@@ -15,7 +15,7 @@ export function buildInlineCreateInput(
   },
 ): CreateTaskInput | null {
   const parsed = parseQuickAdd(text, { today: options.today, weekStartsOn: options.weekStartsOn })
-  if (!parsed.title) return null
+  if (!parsed.title || titleLengthError(parsed.title)) return null
   const tagIds: string[] = []
   const newTagNames: string[] = []
   for (const name of parsed.tagNames) {
@@ -31,4 +31,12 @@ export function buildInlineCreateInput(
     tagIds,
     newTagNames,
   }
+}
+
+/** Inline message for the typed text (title over the length limit), or null. */
+export function inlineAddError(
+  text: string,
+  options: { today: LocalDate; weekStartsOn: WeekStartsOn },
+): string | null {
+  return titleLengthError(parseQuickAdd(text, options).title)
 }

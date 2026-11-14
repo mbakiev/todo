@@ -11,14 +11,18 @@ import { useSettingsStore } from '@/stores/settingsStore'
 import { useTagsStore } from '@/stores/tagsStore'
 import { useTasksStore } from '@/stores/tasksStore'
 import { useUiStore } from '@/stores/uiStore'
-import { buildInlineCreateInput } from './inlineAdd'
+import { buildInlineCreateInput, inlineAddError } from './inlineAdd'
 
 export function InlineAddTask({ scope }: { scope: BoardScope }) {
   const [open, setOpen] = useState(false)
   const [text, setText] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+  const weekStartsOn = useSettingsStore((st) => st.settings.weekStartsOn)
+  // Over-long titles are flagged here and never sent (Enter does nothing meanwhile).
+  const error = open ? inlineAddError(text, { today: getToday(), weekStartsOn }) : null
 
   const submit = (): void => {
+    if (error) return
     const today = getToday()
     const settings = useSettingsStore.getState().settings
     const input = buildInlineCreateInput(text, {
@@ -88,8 +92,14 @@ export function InlineAddTask({ scope }: { scope: BoardScope }) {
           }
         }}
         onBlur={() => setOpen(false)}
+        aria-invalid={error !== null || undefined}
         className="h-8 w-full bg-transparent px-2.5 text-[13px] outline-none placeholder:text-muted-foreground/70"
       />
+      {error && (
+        <p role="alert" className="px-2.5 pb-1.5 text-[12px] text-destructive">
+          {error}
+        </p>
+      )}
     </div>
   )
 }

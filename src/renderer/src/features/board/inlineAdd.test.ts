@@ -1,4 +1,4 @@
-import { buildInlineCreateInput } from './inlineAdd'
+import { buildInlineCreateInput, inlineAddError } from './inlineAdd'
 
 const opts = {
   today: '2026-11-13', // a Friday
@@ -36,5 +36,14 @@ describe('buildInlineCreateInput', () => {
 
   it('keeps non-date @mentions in the title', () => {
     expect(buildInlineCreateInput('Ping @john', opts)?.title).toBe('Ping @john')
+  })
+})
+
+describe('inline add title limit', () => {
+  it('flags and refuses a cleaned title over 500 characters', () => {
+    const long = `${'x'.repeat(501)} !high`
+    expect(inlineAddError(long, opts)).toBe('Title is too long: 501 of 500 characters.')
+    expect(buildInlineCreateInput(long, opts)).toBeNull()
+    expect(inlineAddError(`${'x'.repeat(500)} !high`, opts)).toBeNull()
   })
 })

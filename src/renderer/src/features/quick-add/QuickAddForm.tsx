@@ -211,8 +211,14 @@ export function QuickAddForm({
           onChange={(e) => update({ text: e.target.value })}
           onKeyDown={onTitleKeyDown}
           spellCheck
+          aria-invalid={resolved.titleTooLong || undefined}
           className="h-8 w-full bg-transparent text-[15px] font-medium outline-none placeholder:font-normal placeholder:text-muted-foreground/70"
         />
+        {resolved.titleTooLong && (
+          <p role="alert" data-testid="title-too-long" className="text-[12px] text-destructive">
+            {resolved.error}
+          </p>
+        )}
         <textarea
           aria-label="Description"
           placeholder="Notes (optional, Markdown)"
@@ -287,7 +293,7 @@ export function QuickAddForm({
             <Button
               size="sm"
               className="h-7 gap-1.5 px-2.5 text-[13px]"
-              disabled={saving || resolved.title === ''}
+              disabled={saving || resolved.title === '' || resolved.titleTooLong}
               onClick={() => void submit(false)}
             >
               Add task
@@ -302,7 +308,7 @@ export function QuickAddForm({
               <Button
                 size="sm"
                 className="h-7 px-3 text-[13px]"
-                disabled={saving || resolved.title === ''}
+                disabled={saving || resolved.title === '' || resolved.titleTooLong}
                 onClick={() => void submit(createMore)}
               >
                 Create task

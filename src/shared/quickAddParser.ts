@@ -8,7 +8,7 @@
 // Tokens must start at the beginning of the input or after whitespace.
 
 import * as chrono from 'chrono-node'
-import { MAX_TAG_NAME_LENGTH } from './constants'
+import { MAX_TAG_NAME_LENGTH, MAX_TITLE_LENGTH } from './constants'
 import { addDays, isLocalDate, localDateToDate, presetDate, toLocalDate } from './dates'
 import type { LocalDate, Priority, WeekStartsOn } from './types'
 
@@ -189,4 +189,14 @@ export function removeToken(input: string, token: { start: number; end: number }
   }
   if (before === '' && after.startsWith(' ')) return after.slice(1)
   return before + after
+}
+
+/**
+ * Message when a cleaned title (tokens stripped) is too long to save, else null. Shown inline
+ * by the quick-add form and the board's inline add, which disable saving meanwhile.
+ */
+export function titleLengthError(title: string): string | null {
+  return title.length > MAX_TITLE_LENGTH
+    ? `Title is too long: ${title.length.toLocaleString('en-US')} of ${MAX_TITLE_LENGTH} characters.`
+    : null
 }

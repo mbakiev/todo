@@ -16,6 +16,16 @@ const parse = (text: string) => parseQuickAdd(text, { today: TODAY, weekStartsOn
 const draft = (over: Partial<QuickAddDraft> = {}): QuickAddDraft => ({ ...initialDraft(), ...over })
 
 describe('resolveDraft', () => {
+  it('flags a cleaned title over 500 characters (tokens do not count) and blocks saving', () => {
+    const ok = `${'a'.repeat(500)} #work !high @tomorrow`
+    const okR = resolveDraft(draft({ text: ok }), parse(ok), {}, find)
+    expect(okR).toMatchObject({ titleTooLong: false, error: null })
+    const long = `${'a'.repeat(501)} #work`
+    const r = resolveDraft(draft({ text: long }), parse(long), {}, find)
+    expect(r.titleTooLong).toBe(true)
+    expect(r.error).toBe('Title is too long: 501 of 500 characters.')
+  })
+
   it('uses tokens, strips them from the title and splits existing / new tags', () => {
     const text = 'Call Anna #work #Home !high @tomorrow'
     const r = resolveDraft(draft({ text }), parse(text), {}, find)

@@ -8,7 +8,12 @@
 // control still wins).
 import { DEFAULT_PRIORITY } from '@shared/constants'
 import type { CreateTaskInput } from '@shared/ipc'
-import { removeToken, type QuickAddParseResult, type QuickAddToken } from '@shared/quickAddParser'
+import {
+  removeToken,
+  titleLengthError,
+  type QuickAddParseResult,
+  type QuickAddToken,
+} from '@shared/quickAddParser'
 import type { LocalDate, Priority, Status, Tag } from '@shared/types'
 import type { NewTaskPrefill } from '@/stores/uiStore'
 
@@ -57,6 +62,8 @@ export interface ResolvedDraft {
   overridden: { priority: boolean; due: boolean }
   /** Validation message, or null when the draft can be saved. */
   error: string | null
+  /** The title is over the length limit (shown inline; saving is disabled). */
+  titleTooLong: boolean
 }
 
 export function resolveDraft(
@@ -80,6 +87,7 @@ export function resolveDraft(
 
   let error: string | null = null
   if (parsed.title === '') error = 'Type a title'
+  else if (titleLengthError(parsed.title)) error = titleLengthError(parsed.title)
   else if (startDate && dueDate && startDate > dueDate)
     error = 'The start date must be on or before the due date'
 
@@ -97,6 +105,7 @@ export function resolveDraft(
       due: draft.explicitDue !== undefined && parsed.dueDate !== null,
     },
     error,
+    titleTooLong: titleLengthError(parsed.title) !== null,
   }
 }
 
