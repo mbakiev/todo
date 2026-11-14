@@ -84,6 +84,13 @@ export interface ImportResult {
   backupPath?: string
 }
 
+export interface BackupInfo {
+  /** Folder holding the `todos-YYYYMMDD-HHmmss.db` snapshots. */
+  dir: string
+  latest: { path: string; createdAt: number } | null
+  count: number
+}
+
 export interface ExportFile {
   app: 'martin-todos'
   formatVersion: 1

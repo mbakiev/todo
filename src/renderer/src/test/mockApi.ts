@@ -23,6 +23,7 @@ export function installMockApi(
       importFromFile: vi.fn(),
       backupNow: vi.fn(),
       revealDataFolder: vi.fn(),
+      getBackupInfo: vi.fn(),
       ...overrides.data,
     },
     app: {
@@ -32,6 +33,7 @@ export function installMockApi(
       resizeQuickAdd: vi.fn(),
       getShortcutStatus: vi.fn(),
       openSettings: vi.fn(),
+      setGlobalShortcutsSuspended: vi.fn(),
       ...overrides.app,
     },
     on: {

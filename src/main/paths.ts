@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { app } from 'electron'
 
@@ -5,6 +6,13 @@ import { app } from 'electron'
 export const USER_DATA_ENV = 'MARTIN_TODOS_USER_DATA'
 
 export const isDev = !app.isPackaged
+
+/**
+ * Automated test runs (e2e sets `MARTIN_TODOS_USER_DATA`). Such runs must never touch
+ * machine-wide OS state: no real global shortcuts (they would hijack keys on the
+ * developer's machine and collide between parallel instances) and no login-item changes.
+ */
+export const isTestRun = Boolean(process.env[USER_DATA_ENV])
 
 /**
  * Must run before `app.whenReady()`. Dev builds use `<appData>/<name>-dev` so development
@@ -48,4 +56,21 @@ export function rendererEntry(entry: 'index' | 'quick-add'): { url: string } | {
 export function resourcePath(...segments: string[]): string {
   const base = app.isPackaged ? process.resourcesPath : join(__dirname, '../../resources')
   return join(base, ...segments)
+}
+
+/**
+ * The app's version. `app.getVersion()` falls back to Electron's version when the main
+ * script is launched directly (e2e: `electron out/main/index.js`), so unpackaged runs read
+ * package.json instead.
+ */
+export function appVersion(): string {
+  if (app.isPackaged) return app.getVersion()
+  try {
+    const pkg = JSON.parse(readFileSync(join(__dirname, '../../package.json'), 'utf8')) as {
+      version?: unknown
+    }
+    return typeof pkg.version === 'string' ? pkg.version : app.getVersion()
+  } catch {
+    return app.getVersion()
+  }
 }

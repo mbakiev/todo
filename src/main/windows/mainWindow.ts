@@ -1,8 +1,10 @@
-import { BrowserWindow, nativeTheme, screen } from 'electron'
+import { app, BrowserWindow, nativeTheme, screen } from 'electron'
 import { APP_DISPLAY_NAME } from '@shared/constants'
 import { IPC } from '@shared/ipc'
 import type { WindowBounds } from '@shared/types'
 import type { AppContext } from '../context'
+import { resourcePath } from '../paths'
+import { hideWindowReturningFocus, prepareToShow } from './hideWindow'
 import { loadRenderer } from './loadRenderer'
 import { secureWebPreferences } from './secureWebPreferences'
 
@@ -14,6 +16,8 @@ const BG_LIGHT = '#ffffff'
 const BG_DARK = '#09090b'
 
 let mainWindow: BrowserWindow | null = null
+/** When the main window last lost focus (see isMainWindowFocused's grace period). */
+let lastBlurAt = 0
 
 export function getMainWindow(): BrowserWindow | null {
   return mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
@@ -36,11 +40,19 @@ function platformChrome(): Electron.BrowserWindowConstructorOptions {
     // Traffic lights inset over the sidebar; the renderer provides drag regions.
     return { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 16, y: 18 } }
   }
-  // Windows / Linux: standard frame, menu bar hidden.
-  return { autoHideMenuBar: true }
+  // Windows / Linux: standard frame, menu bar hidden (its accelerators still work).
+  return { autoHideMenuBar: true, icon: resourcePath('icon.png') }
 }
 
-export function createMainWindow(ctx: AppContext): BrowserWindow {
+export interface CreateMainWindowOptions {
+  /** Show once ready (default true). False when launched at login: start in the tray. */
+  show?: boolean
+}
+
+export function createMainWindow(
+  ctx: AppContext,
+  { show = true }: CreateMainWindowOptions = {},
+): BrowserWindow {
   const settings = ctx.repos.settings.get()
   const win = new BrowserWindow({
     ...restoredBounds(settings.windowBounds),
@@ -59,7 +71,7 @@ export function createMainWindow(ctx: AppContext): BrowserWindow {
 
   win.once('ready-to-show', () => {
     // E2E runs may ask for the window to stay hidden.
-    if (process.env['MARTIN_TODOS_HIDE_WINDOW'] !== '1') win.show()
+    if (show && process.env['MARTIN_TODOS_HIDE_WINDOW'] !== '1') win.show()
   })
 
   // Persist bounds (debounced) on move/resize and once more on close.
@@ -86,14 +98,29 @@ export function createMainWindow(ctx: AppContext): BrowserWindow {
     clearTimeout(saveTimer)
     saveTimer = setTimeout(saveBounds, 400)
   }
+  win.on('blur', () => {
+    lastBlurAt = Date.now()
+  })
   win.on('resize', scheduleSave)
   win.on('move', scheduleSave)
   win.on('maximize', scheduleSave)
   win.on('unmaximize', scheduleSave)
-  win.on('close', () => {
+  win.on('close', (event) => {
     clearTimeout(saveTimer)
     saveBounds()
+    // Closing only hides; the app keeps running in the tray. Real quits set ctx.quitting
+    // (before-quit, or the Windows session-end events below) and let the close through.
+    if (!ctx.quitting) {
+      event.preventDefault()
+      hideMainWindow(win)
+    }
   })
+  // Windows shutdown / logoff does not emit before-quit: never block it.
+  const endingSession = (): void => {
+    ctx.quitting = true
+  }
+  win.on('query-session-end', endingSession)
+  win.on('session-end', endingSession)
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null
   })
@@ -102,9 +129,59 @@ export function createMainWindow(ctx: AppContext): BrowserWindow {
   return win
 }
 
+/**
+ * Hides the main window (close button, tray toggle, global shortcut). Gives focus back to
+ * the previously used app; a full-screen window leaves full screen first on macOS so it
+ * does not leave an empty Space behind.
+ */
+export function hideMainWindow(win: BrowserWindow): void {
+  if (win.isDestroyed()) return
+  // Hiding fires `blur` + `visibilitychange` in the renderer, which is where the detail
+  // panel flushes pending autosaves; nothing to coordinate here.
+  if (process.platform === 'darwin' && win.isFullScreen()) {
+    win.once('leave-full-screen', () => hideMainWindow(win))
+    win.setFullScreen(false)
+    return
+  }
+  hideWindowReturningFocus(win)
+}
+
+/**
+ * True when the main window is on screen and has keyboard focus. `graceMs` also accepts a
+ * window that lost focus that recently — clicking the Windows tray icon focuses the
+ * taskbar before our click handler runs.
+ */
+export function isMainWindowFocused(graceMs = 0): boolean {
+  const win = getMainWindow()
+  if (!win || !win.isVisible() || win.isMinimized()) return false
+  return win.isFocused() || Date.now() - lastBlurAt < graceMs
+}
+
+/**
+ * Global "toggle app" shortcut / Windows tray click: shows + focuses the window when it is
+ * hidden or in the background, hides it when it is the focused window.
+ */
+export function toggleMainWindow(ctx: AppContext, { focusGraceMs = 0 } = {}): void {
+  const win = getMainWindow()
+  if (win && isMainWindowFocused(focusGraceMs)) {
+    hideMainWindow(win)
+    // macOS: hiding the last window leaves the app active with nothing on screen; hide the
+    // app as well so the previously active app gets focus back (Cmd+H semantics).
+    if (
+      process.platform === 'darwin' &&
+      !BrowserWindow.getAllWindows().some((w) => w !== win && w.isVisible())
+    ) {
+      app.hide()
+    }
+    return
+  }
+  void showMainWindow(ctx)
+}
+
 /** Shows + focuses the main window (creating it if needed), optionally opening a task. */
 export async function showMainWindow(ctx: AppContext, taskId?: string): Promise<void> {
   const win = getMainWindow() ?? createMainWindow(ctx)
+  prepareToShow(win)
   if (win.isMinimized()) win.restore()
   win.show()
   win.focus()

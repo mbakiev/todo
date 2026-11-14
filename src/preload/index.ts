@@ -38,6 +38,7 @@ const api: Api = {
     importFromFile: (mode) => invoke(IPC.data.importFromFile, mode),
     backupNow: () => invoke(IPC.data.backupNow),
     revealDataFolder: () => invoke(IPC.data.revealDataFolder),
+    getBackupInfo: () => invoke(IPC.data.getBackupInfo),
   },
   app: {
     getInfo: () => invoke(IPC.app.getInfo),
@@ -46,6 +47,8 @@ const api: Api = {
     resizeQuickAdd: (height) => invoke(IPC.app.resizeQuickAdd, height),
     getShortcutStatus: () => invoke(IPC.app.getShortcutStatus),
     openSettings: () => invoke(IPC.app.openSettings),
+    setGlobalShortcutsSuspended: (suspended) =>
+      invoke(IPC.app.setGlobalShortcutsSuspended, suspended),
   },
   on: {
     dataChanged: (cb) => subscribe(IPC.events.dataChanged, cb),
