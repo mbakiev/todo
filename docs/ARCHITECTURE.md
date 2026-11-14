@@ -429,6 +429,17 @@ unit-tested `services/startupRecovery.ts`). The process never lingers without a 
   **Quit**, instead of silently creating an empty database.
 - Any other startup exception shows an error box and exits.
 
+### Renderer crashes and quitting
+- A renderer that crashes or is killed (main or quick-add window) is reloaded. Three crashes
+  within 60 s stop the loop and ask **Quit** / **Try again** instead. A hung renderer gets a
+  **Wait** / **Reload** prompt. A quick-add window destroyed outside a real quit is recreated
+  hidden.
+- Every quit (tray Quit, app menu / `Cmd+Q`, SIGTERM / SIGINT) goes through one quit gate
+  (`main/quitGate.ts`): the quit is held until the main window's renderer has saved pending
+  edits (≤ 1.5 s), repeated quit requests during that wait are held too, and the DB is closed
+  exactly once afterwards. Windows logoff / shutdown (no `before-quit`) starts the flush on
+  `query-session-end` and closes the DB on `session-end`.
+
 ### Environment variables
 | Variable | Effect |
 |---|---|
@@ -436,7 +447,8 @@ unit-tested `services/startupRecovery.ts`). The process never lingers without a 
 | `MARTIN_TODOS_E2E=1` | e2e test mode only: fake global-shortcut registrar, no login-item changes, `__martinTodosTest` main-process hooks, and the test switches below. Set by `e2e/launch.ts`. |
 | `MARTIN_TODOS_HIDE_WINDOW=1` | (test mode only) keep the main window hidden. |
 | `MARTIN_TODOS_FAKE_TAKEN_SHORTCUTS=<a,b>` | (test mode only) accelerators the fake registrar refuses. |
-| `MARTIN_TODOS_STARTUP_DIALOG_CHOICE=<choice>` | (test mode only) answers the startup-problem dialog without showing it. |
+| `MARTIN_TODOS_STARTUP_DIALOG_CHOICE=<choice>` | (test mode only) answers the startup-problem dialog without showing it (`reveal`, `restore`, `fresh`, `quit`). |
+| `MARTIN_TODOS_CRASH_DIALOG_CHOICE=<quit\|reload>` | (test mode only) answers the renderer crash-loop dialog. |
 
 A launch without `MARTIN_TODOS_E2E=1` behaves exactly like production.
 

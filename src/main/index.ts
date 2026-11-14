@@ -4,7 +4,7 @@
 // tray (and the Dock on macOS). A real quit comes from tray Quit, the app menu / Cmd+Q, or
 // OS shutdown / logout; `before-quit` (and the Windows session-end events in
 // mainWindow.ts) set `ctx.quitting` so windows are then allowed to close.
-import { app, dialog, nativeTheme, powerMonitor, session, type BrowserWindow } from 'electron'
+import { app, dialog, nativeTheme, powerMonitor, session } from 'electron'
 import { z } from 'zod'
 import { APP_DISPLAY_NAME } from '@shared/constants'
 import { IPC } from '@shared/ipc'
@@ -23,7 +23,12 @@ import { openDatabaseWithRecovery } from './startup'
 import { installTestHook, registerGlobalShortcuts, unregisterGlobalShortcuts } from './shortcuts'
 import { createTray, destroyTray } from './tray'
 import { createMainWindow, getMainWindow, showMainWindow } from './windows/mainWindow'
-import { createQuickAddWindow, hideQuickAdd, showQuickAdd } from './windows/quickAddWindow'
+import {
+  createQuickAddWindow,
+  getQuickAddWindow,
+  hideQuickAdd,
+  showQuickAdd,
+} from './windows/quickAddWindow'
 import { requestRendererFlush } from './windows/rendererFlush'
 
 configureUserDataDir()
@@ -76,7 +81,6 @@ async function bootstrap(): Promise<void> {
     }
   }
 
-  let quickAddWindow: BrowserWindow | null = null
   let lastSettings = repos.settings.get()
 
   // Every quit is held until the main window has saved pending edits (bounded by a timeout),
@@ -98,8 +102,7 @@ async function bootstrap(): Promise<void> {
     isDev,
     quitting: false,
     getMainWindow,
-    getQuickAddWindow: () =>
-      quickAddWindow && !quickAddWindow.isDestroyed() ? quickAddWindow : null,
+    getQuickAddWindow,
     broadcastDataChanged: (change: DataChange) => broadcast(IPC.events.dataChanged, change),
     broadcastSettingsChanged: (settings: Settings) => {
       applySettingsSideEffects(ctx, lastSettings, settings)
@@ -133,7 +136,7 @@ async function bootstrap(): Promise<void> {
 
   // Launched by the OS at login → start quietly in the tray.
   createMainWindow(ctx, { show: !wasLaunchedAtLogin() })
-  quickAddWindow = createQuickAddWindow(ctx)
+  createQuickAddWindow(ctx)
   createTray(ctx)
   registerGlobalShortcuts(ctx, lastSettings.shortcuts)
   applyLaunchAtLogin(ctx, lastSettings.launchAtLogin)

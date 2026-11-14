@@ -4,6 +4,7 @@ import { IPC } from '@shared/ipc'
 import type { WindowBounds } from '@shared/types'
 import type { AppContext } from '../context'
 import { isTestRun, resourcePath } from '../paths'
+import { installCrashRecovery } from './crashRecovery'
 import { hideWindowReturningFocus, prepareToShow } from './hideWindow'
 import { loadRenderer } from './loadRenderer'
 import { requestRendererFlush } from './rendererFlush'
@@ -127,6 +128,7 @@ export function createMainWindow(
     if (mainWindow === win) mainWindow = null
   })
 
+  installCrashRecovery(win, 'main window')
   void loadRenderer(win, 'index')
   return win
 }

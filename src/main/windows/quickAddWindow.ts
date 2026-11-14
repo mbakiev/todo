@@ -12,6 +12,7 @@
 import { BrowserWindow, nativeTheme, screen } from 'electron'
 import { IPC } from '@shared/ipc'
 import type { AppContext } from '../context'
+import { installCrashRecovery } from './crashRecovery'
 import { hideWindowReturningFocus, prepareToShow } from './hideWindow'
 import { loadRenderer } from './loadRenderer'
 import { quickAddPosition } from './quickAddPosition'
@@ -30,6 +31,11 @@ let showWhenReady = false
 
 function live(): BrowserWindow | null {
   return quickAdd && !quickAdd.isDestroyed() ? quickAdd : null
+}
+
+/** The hidden quick-add window, if it exists. */
+export function getQuickAddWindow(): BrowserWindow | null {
+  return live()
 }
 
 function platformOptions(): Electron.BrowserWindowConstructorOptions {
@@ -104,18 +110,26 @@ export function createQuickAddWindow(ctx: AppContext): BrowserWindow | null {
     })
   }
 
-  win.webContents.once('did-finish-load', () => {
+  // `on`, not `once`: after a renderer crash the window reloads and becomes ready again.
+  win.webContents.on('did-finish-load', () => {
+    if (quickAdd !== win) return
     ready = true
     if (showWhenReady) {
       showWhenReady = false
       showQuickAdd(ctx)
     }
   })
+  win.webContents.on('render-process-gone', () => {
+    if (quickAdd === win) ready = false
+  })
   win.on('closed', () => {
     nativeTheme.off('updated', syncBackground)
     if (quickAdd === win) {
       quickAdd = null
       ready = false
+      // Destroyed outside a real quit (crash, OS, a stray destroy()): recreate it hidden so the
+      // hotkey keeps working instantly.
+      if (!ctx.quitting) setImmediate(() => !ctx.quitting && !live() && createQuickAddWindow(ctx))
     }
   })
   // Never closed by the user; if something closes it outside a real quit, recreate lazily.
@@ -126,6 +140,7 @@ export function createQuickAddWindow(ctx: AppContext): BrowserWindow | null {
     }
   })
 
+  installCrashRecovery(win, 'quick add')
   void loadRenderer(win, 'quick-add')
   return win
 }
