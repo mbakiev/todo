@@ -1,6 +1,10 @@
 // In-app keyboard shortcuts handled by the shell (spec §9):
 // Cmd/Ctrl+1…6 switch view, Cmd/Ctrl+F focus search, Cmd/Ctrl+N new task,
 // Cmd/Ctrl+, settings, Esc closes the detail panel (dialogs/popovers handle their own Esc).
+//
+// The renderer is the single owner of Cmd/Ctrl+N and Cmd/Ctrl+, while the main window has
+// focus: the app menu shows the same accelerators but ignores them when they come from the
+// focused main window (menu.ts), so a key press never opens the dialog twice.
 import { useEffect } from 'react'
 import { VIEW_IDS } from '@shared/constants'
 import { isModKey } from '@/lib/platform'
@@ -17,36 +21,44 @@ function overlayOpen(): boolean {
 
 export function useShellShortcuts(): void {
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent): void => {
+    // Capture phase: widgets that stop propagation (editor, comboboxes) cannot swallow these.
+    const onModKey = (e: KeyboardEvent): void => {
+      if (!isModKey(e) || e.altKey || e.shiftKey || e.isComposing) return
       const ui = useUiStore.getState()
-      if (isModKey(e) && !e.altKey && !e.shiftKey) {
-        const n = Number(e.key)
-        if (Number.isInteger(n) && n >= 1 && n <= VIEW_IDS.length) {
-          e.preventDefault()
-          ui.setActiveView(VIEW_IDS[n - 1] ?? 'today')
-          return
-        }
-        switch (e.key.toLowerCase()) {
-          case 'f':
-            e.preventDefault()
-            ui.requestSearchFocus()
-            return
-          case 'n':
-            e.preventDefault()
-            ui.openNewTaskDialog()
-            return
-          case ',':
-            e.preventDefault()
-            ui.setSettingsOpen(true)
-            return
-        }
-      }
-      if (e.key === 'Escape' && !e.defaultPrevented && !overlayOpen() && ui.selectedTaskId) {
+      const n = Number(e.key)
+      if (Number.isInteger(n) && n >= 1 && n <= VIEW_IDS.length) {
         e.preventDefault()
-        ui.selectTask(null)
+        ui.setActiveView(VIEW_IDS[n - 1] ?? 'today')
+        return
+      }
+      switch (e.key.toLowerCase()) {
+        case 'f':
+          e.preventDefault()
+          ui.requestSearchFocus()
+          return
+        case 'n':
+          e.preventDefault()
+          if (!e.repeat) ui.openNewTaskDialog()
+          return
+        case ',':
+          e.preventDefault()
+          ui.setSettingsOpen(true)
+          return
       }
     }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    // Bubble phase: drags, editors and overlays consume their own Esc first.
+    const onEscape = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape' || e.defaultPrevented || overlayOpen()) return
+      const ui = useUiStore.getState()
+      if (!ui.selectedTaskId) return
+      e.preventDefault()
+      ui.selectTask(null)
+    }
+    window.addEventListener('keydown', onModKey, true)
+    window.addEventListener('keydown', onEscape)
+    return () => {
+      window.removeEventListener('keydown', onModKey, true)
+      window.removeEventListener('keydown', onEscape)
+    }
   }, [])
 }

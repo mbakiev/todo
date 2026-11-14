@@ -58,7 +58,10 @@ export const useUiStore = create<UiState>()((set) => ({
     set((s) => ({ filter: { ...s.filter, priorities: toggle(s.filter.priorities, p) } })),
   setFilterPriorities: (priorities) => set((s) => ({ filter: { ...s.filter, priorities } })),
   clearFilter: () => set({ filter: EMPTY_FILTER }),
-  openNewTaskDialog: (prefill = {}) => set({ newTaskDialog: { open: true, prefill } }),
+  // Opening while already open is a no-op: a second trigger must not reset the prefill
+  // (e.g. a calendar day's due date) of the dialog the user is typing in.
+  openNewTaskDialog: (prefill = {}) =>
+    set((s) => (s.newTaskDialog.open ? s : { newTaskDialog: { open: true, prefill } })),
   closeNewTaskDialog: () =>
     set((s) => ({ newTaskDialog: { open: false, prefill: s.newTaskDialog.prefill } })),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),

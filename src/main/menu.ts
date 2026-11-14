@@ -1,7 +1,7 @@
 // Application menu (spec §9). macOS gets the conventional app menu; the Edit menu's roles
 // are what make copy/paste/undo work in text inputs on macOS. On Windows the menu bar is
 // hidden (mainWindow.ts) but the menu stays installed so its accelerators keep working.
-import { app, dialog, Menu, type MenuItemConstructorOptions } from 'electron'
+import { app, dialog, Menu, type KeyboardEvent, type MenuItemConstructorOptions } from 'electron'
 import { APP_DISPLAY_NAME } from '@shared/constants'
 import type { AppContext } from './context'
 import { appVersion } from './paths'
@@ -23,15 +23,29 @@ function showAbout(): void {
 
 export function buildAppMenu(ctx: AppContext): Menu {
   const mac = process.platform === 'darwin'
+  // While the main window is focused its renderer owns Cmd/Ctrl+N and Cmd/Ctrl+, (it also
+  // receives the key press; useShellShortcuts.ts). Acting on the accelerator here too would
+  // open the dialog twice, so only clicks and presses from elsewhere (quick-add window, no
+  // window) are handled by the menu.
+  const ownedByRenderer = (event: KeyboardEvent): boolean => {
+    const main = ctx.getMainWindow()
+    return event.triggeredByAccelerator === true && !!main && main.isFocused()
+  }
   const newTask: MenuItemConstructorOptions = {
+    id: 'new-task',
     label: 'New Task',
     accelerator: 'CmdOrCtrl+N',
-    click: () => requestNewTaskInMainWindow(ctx),
+    click: (_item, _win, event) => {
+      if (!ownedByRenderer(event)) requestNewTaskInMainWindow(ctx)
+    },
   }
   const settings: MenuItemConstructorOptions = {
+    id: 'settings',
     label: mac ? 'Settings…' : 'Settings',
     accelerator: 'CmdOrCtrl+,',
-    click: () => void openSettingsInMainWindow(ctx),
+    click: (_item, _win, event) => {
+      if (!ownedByRenderer(event)) void openSettingsInMainWindow(ctx)
+    },
   }
 
   const template: MenuItemConstructorOptions[] = []
