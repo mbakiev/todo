@@ -1,6 +1,13 @@
 import { act, renderHook } from '@testing-library/react'
+import type { Task } from '@shared/types'
+import { makeTask } from '@shared/test/factories'
+import { useTasksStore } from '@/stores/tasksStore'
+import { installMockApi } from '@/test/mockApi'
 import { createAutosave } from './autosave'
+import { saveTaskPatch } from './saveTask'
 import { useDraftField } from './useDraftField'
+
+vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { error: vi.fn() }) }))
 
 beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
@@ -119,5 +126,99 @@ describe('useDraftField', () => {
     hook.unmount()
     expect(saveA).toHaveBeenCalledExactlyOnceWith('typed in A')
     expect(saveB).not.toHaveBeenCalled()
+  })
+
+  describe('when a save fails', () => {
+    const task: Task = makeTask({ id: 'a', description: 'old text' })
+
+    /** The detail panel's wiring: value from the store, save through saveTaskPatch. */
+    function setupWithStore() {
+      useTasksStore.setState({ byId: { a: task }, loaded: true, pending: {}, sync: {} })
+      const hook = renderHook(() =>
+        useDraftField({
+          value: useTasksStore((s) => s.byId.a?.description ?? ''),
+          save: (v) => saveTaskPatch('a', { description: v }),
+          isValid: (v) => v.length <= 20,
+        }),
+      )
+      return hook
+    }
+
+    it('keeps the typed text, shows "failed", ignores the rollback and retries on flush', async () => {
+      const update = vi.fn((): Promise<Task> => Promise.reject(new Error('disk full')))
+      installMockApi({ tasks: { update } })
+      const hook = setupWithStore()
+      act(() => hook.result.current.change('typed text'))
+      await act(async () => {
+        vi.advanceTimersByTime(500)
+      })
+      expect(update).toHaveBeenCalledTimes(1)
+      // The store rolled back to "old text"; the field must not adopt it.
+      expect(useTasksStore.getState().byId.a?.description).toBe('old text')
+      expect(hook.result.current.draft).toBe('typed text')
+      expect(hook.result.current.status).toBe('failed')
+      expect(hook.result.current.dirty).toBe(true)
+
+      // A later flush (blur, panel close, window hide) saves it again.
+      update.mockImplementation(() =>
+        Promise.resolve({ ...task, description: 'typed text', updatedAt: task.updatedAt + 1 }),
+      )
+      await act(async () => hook.result.current.flush())
+      expect(update).toHaveBeenCalledTimes(2)
+      expect(update).toHaveBeenLastCalledWith('a', { description: 'typed text' })
+      expect(hook.result.current.status).toBe('saved')
+      expect(hook.result.current.draft).toBe('typed text')
+      expect(useTasksStore.getState().byId.a?.description).toBe('typed text')
+    })
+
+    it('the next edit retries too, with the newest text', async () => {
+      const update = vi.fn((): Promise<Task> => Promise.reject(new Error('nope')))
+      installMockApi({ tasks: { update } })
+      const hook = setupWithStore()
+      act(() => hook.result.current.change('first'))
+      await act(async () => {
+        vi.advanceTimersByTime(500)
+      })
+      expect(hook.result.current.status).toBe('failed')
+      update.mockImplementation(() =>
+        Promise.resolve({ ...task, description: 'first!', updatedAt: task.updatedAt + 1 }),
+      )
+      act(() => hook.result.current.change('first!'))
+      await act(async () => {
+        vi.advanceTimersByTime(500)
+      })
+      expect(update).toHaveBeenLastCalledWith('a', { description: 'first!' })
+      expect(hook.result.current.status).toBe('saved')
+    })
+
+    it('a draft over the limit is flagged, never sent and never overwritten', async () => {
+      const update = vi.fn()
+      installMockApi({ tasks: { update } })
+      const hook = setupWithStore()
+      act(() => hook.result.current.change('x'.repeat(21)))
+      expect(hook.result.current.status).toBe('invalid')
+      await act(async () => {
+        vi.advanceTimersByTime(1000)
+        hook.result.current.flush()
+      })
+      expect(update).not.toHaveBeenCalled()
+      // An external change does not replace the over-long draft.
+      act(() =>
+        useTasksStore.getState().applyChange({
+          upsertedTasks: [{ ...task, description: 'remote', updatedAt: task.updatedAt + 5 }],
+        }),
+      )
+      expect(hook.result.current.draft).toBe('x'.repeat(21))
+      // Shortening it saves again.
+      update.mockImplementation(() =>
+        Promise.resolve({ ...task, description: 'short', updatedAt: task.updatedAt + 9 }),
+      )
+      act(() => hook.result.current.change('short'))
+      expect(hook.result.current.status).toBe('saved')
+      await act(async () => {
+        vi.advanceTimersByTime(500)
+      })
+      expect(update).toHaveBeenCalledExactlyOnceWith('a', { description: 'short' })
+    })
   })
 })

@@ -115,7 +115,8 @@ export const SOFT_DELETE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 export const POSITION_EPSILON = 1e-6
 
 export const MAX_TITLE_LENGTH = 500
-export const MAX_DESCRIPTION_LENGTH = 200_000
+/** Large enough that pasting a long document never hits it in practice. */
+export const MAX_DESCRIPTION_LENGTH = 1_000_000
 export const MAX_TAG_NAME_LENGTH = 50
 
 /**

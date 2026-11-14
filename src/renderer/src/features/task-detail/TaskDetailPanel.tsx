@@ -1,9 +1,10 @@
 // Task detail side panel (spec §7): inline-editable title, property rows, Markdown description,
 // timestamps, Copy as Markdown and Delete. Everything autosaves; nothing typed is ever lost.
 import { format, formatDistanceToNowStrict } from 'date-fns'
-import { Check, Copy, Trash2, X } from 'lucide-react'
+import { AlertCircle, Check, Copy, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
+import { MAX_DESCRIPTION_LENGTH, MAX_TITLE_LENGTH } from '@shared/constants'
 import type { UpdateTaskPatch } from '@shared/ipc'
 import type { Task } from '@shared/types'
 import { isDueToday, isOverdue } from '@shared/views'
@@ -27,7 +28,7 @@ import { useUiStore } from '@/stores/uiStore'
 import { copyText } from './copyText'
 import { resolvedId, saveTaskPatch } from './saveTask'
 import { taskToMarkdown } from './taskMarkdown'
-import { useDraftField } from './useDraftField'
+import { useDraftField, type DraftStatus } from './useDraftField'
 import { usePanelWidth } from './usePanelWidth'
 
 export interface TaskDetailPanelProps {
@@ -100,7 +101,7 @@ function PanelBody({ task }: { task: Task }) {
   useEffect(() => {
     idRef.current = task.id
   })
-  const save = (patch: UpdateTaskPatch): void => saveTaskPatch(idRef.current, patch)
+  const save = (patch: UpdateTaskPatch): Promise<boolean> => saveTaskPatch(idRef.current, patch)
   const today = useToday()
   const tagsById = useTagsById()
 
@@ -108,11 +109,12 @@ function PanelBody({ task }: { task: Task }) {
     value: task.title,
     save: (v) => save({ title: v }),
     normalize: (v) => v.replace(/\s+/g, ' ').trim(),
-    isValid: (v) => v.trim() !== '',
+    isValid: (v) => v.trim() !== '' && v.length <= MAX_TITLE_LENGTH,
   })
   const description = useDraftField({
     value: task.description,
     save: (v) => save({ description: v }),
+    isValid: (v) => v.length <= MAX_DESCRIPTION_LENGTH,
   })
 
   // Window hide / blur / reload are flush points too.
@@ -207,7 +209,11 @@ function PanelBody({ task }: { task: Task }) {
               'placeholder:text-muted-foreground/60',
               isDone && 'text-muted-foreground',
             )}
-            onChange={(e) => title.change(e.target.value.replace(/[\r\n]+/g, ' '))}
+            maxLength={MAX_TITLE_LENGTH}
+            aria-invalid={title.status === 'failed' || undefined}
+            onChange={(e) =>
+              title.change(e.target.value.replace(/[\r\n]+/g, ' ').slice(0, MAX_TITLE_LENGTH))
+            }
             onBlur={title.commit}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === 'Escape') {
@@ -215,6 +221,16 @@ function PanelBody({ task }: { task: Task }) {
                 e.currentTarget.blur()
               }
             }}
+          />
+          <DraftNotice
+            field="title"
+            status={title.status}
+            onRetry={title.retry}
+            hint={
+              title.draft.length >= MAX_TITLE_LENGTH
+                ? `Titles can be at most ${MAX_TITLE_LENGTH.toLocaleString()} characters.`
+                : null
+            }
           />
         </div>
 
@@ -291,6 +307,13 @@ function PanelBody({ task }: { task: Task }) {
 
         <div className="mx-5 border-t" />
 
+        <DraftNotice
+          field="description"
+          status={description.status}
+          onRetry={description.retry}
+          invalidText={`Too long to save: ${description.draft.length.toLocaleString()} of ${MAX_DESCRIPTION_LENGTH.toLocaleString()} characters. Shorten it and it saves again.`}
+          className="mx-5 mt-2"
+        />
         <MarkdownEditor
           value={description.draft}
           onChange={description.change}
@@ -320,6 +343,62 @@ function PanelBody({ task }: { task: Task }) {
       </footer>
     </>
   )
+}
+
+/**
+ * Persistent save state under a draft field: "Not saved — Retry" after a failed save, the
+ * reason when the draft cannot be saved, or an informational hint.
+ */
+function DraftNotice({
+  field,
+  status,
+  onRetry,
+  invalidText,
+  hint,
+  className,
+}: {
+  field: string
+  status: DraftStatus
+  onRetry(): void
+  invalidText?: string
+  hint?: string | null
+  className?: string
+}) {
+  if (status === 'failed') {
+    return (
+      <p
+        role="alert"
+        data-testid={`${field}-save-error`}
+        className={cn('flex items-center gap-1.5 text-[12px] text-destructive', className)}
+      >
+        <AlertCircle className="size-3.5 shrink-0" />
+        <span>Not saved.</span>
+        <button
+          type="button"
+          className="font-medium underline underline-offset-2 hover:no-underline"
+          onClick={onRetry}
+        >
+          Retry
+        </button>
+      </p>
+    )
+  }
+  if (status === 'invalid' && invalidText) {
+    return (
+      <p
+        role="alert"
+        data-testid={`${field}-save-error`}
+        className={cn('flex items-center gap-1.5 text-[12px] text-destructive', className)}
+      >
+        <AlertCircle className="size-3.5 shrink-0" />
+        <span>{invalidText}</span>
+      </p>
+    )
+  }
+  if (hint) {
+    return <p className={cn('text-[12px] text-muted-foreground', className)}>{hint}</p>
+  }
+  return null
 }
 
 function PropLabel({ children, className }: { children: ReactNode; className?: string }) {

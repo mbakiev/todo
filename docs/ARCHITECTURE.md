@@ -318,7 +318,11 @@ footer with created / updated / completed timestamps, **Copy as Markdown**, and 
 
 Everything autosaves: discrete fields immediately, title and description debounced
 (~500 ms) and flushed on blur, panel close, task switch, and window hide. Never lose
-keystrokes.
+keystrokes: if a title/description save fails, the field keeps the typed text (the store's
+rollback is not adopted over it), shows a persistent "Not saved · Retry" state and saves
+again on the next edit or flush. Limits are enforced where the user types: the title input
+stops at 500 characters, and a description over 1,000,000 characters is flagged and not
+sent until shortened.
 
 ### Description editor (Tiptap)
 - Extensions: StarterKit, tables, task lists, links, placeholder, Markdown
