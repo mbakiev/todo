@@ -134,6 +134,7 @@ test('board: empty-space click closes; another card switches; screenshots', asyn
   const page = await setup('today')
   mkdirSync(OUT, { recursive: true })
   await open(page, ALPHA)
+  await page.waitForTimeout(400) // the panel's slide-in animation
   await page.screenshot({ path: join(OUT, 'empty-space-board-1-panel-open.png') })
 
   // Another task switches instead of closing.
