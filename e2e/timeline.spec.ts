@@ -173,6 +173,23 @@ test('a long bar keeps its label in view when its start is scrolled off (every z
   expect(atLabel).toBe(true)
 })
 
+test('a start-only task: the tooltip says "Starts <date>"', async () => {
+  const { page } = await setup()
+  const t = await page.evaluate(
+    (start) =>
+      (globalThis as unknown as WithApi).api.tasks.create({
+        title: 'Kick off the audit',
+        startDate: start,
+      }),
+    localDate(3),
+  )
+  await bar(page, t.id).hover()
+  const tip = page.locator('[data-slot="tooltip-content"]')
+  await expect(tip).toContainText('Kick off the audit')
+  await expect(tip).toContainText(/Starts \w{3} \d+/)
+  await expect(tip).not.toContainText('day')
+})
+
 test('switches zoom levels', async () => {
   const { page } = await setup()
   const view = page.getByTestId('timeline-view')
