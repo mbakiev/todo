@@ -30,12 +30,7 @@ export function BoardSortControl({ scope, sort }: { scope: BoardScope; sort: Boa
         aria-label="Sort"
       >
         {SORTS.map((s) => (
-          <ToggleGroupItem
-            key={s.value}
-            value={s.value}
-            title={s.hint}
-            className={SEGMENT_CLASS}
-          >
+          <ToggleGroupItem key={s.value} value={s.value} title={s.hint} className={SEGMENT_CLASS}>
             {s.label}
           </ToggleGroupItem>
         ))}

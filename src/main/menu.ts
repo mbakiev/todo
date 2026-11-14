@@ -27,9 +27,10 @@ export function buildAppMenu(ctx: AppContext): Menu {
   // receives the key press; useShellShortcuts.ts). Acting on the accelerator here too would
   // open the dialog twice, so only clicks and presses from elsewhere (quick-add window, no
   // window) are handled by the menu.
-  const ownedByRenderer = (event: KeyboardEvent): boolean => {
+  const ownedByRenderer = (event: KeyboardEvent | undefined): boolean => {
     const main = ctx.getMainWindow()
-    return event.triggeredByAccelerator === true && !!main && main.isFocused()
+    // `event` is missing when the item is clicked programmatically (MenuItem.click()).
+    return event?.triggeredByAccelerator === true && !!main && main.isFocused()
   }
   const newTask: MenuItemConstructorOptions = {
     id: 'new-task',

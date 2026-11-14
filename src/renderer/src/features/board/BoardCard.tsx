@@ -30,7 +30,7 @@ export function CardBody({ task, selected = false, overlay = false }: CardBodyPr
         'transition-[border-color,box-shadow,background-color] duration-100',
         !overlay && 'group-hover/card:border-foreground/20',
         done && !overlay && 'bg-card/60 shadow-none',
-        selected && 'border-primary ring-1 ring-primary/30 group-hover/card:border-primary',
+        selected && 'border-primary/70 ring-2 ring-primary/70 group-hover/card:border-primary/70',
         overlay && 'cursor-grabbing border-foreground/20 shadow-lg',
       )}
     >

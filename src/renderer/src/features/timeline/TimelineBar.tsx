@@ -90,6 +90,7 @@ export const TimelineBar = memo(function TimelineBar({
             data-end={rect.span.end}
             data-clamped={pinnedLeft ? (rect.beforeRange ? 'before' : 'start') : undefined}
             data-overdue={overdue || undefined}
+            data-selected={selected || undefined}
             data-dragging={dragging ?? undefined}
             onPointerDown={(e) => onPointerDown(e, task, 'move')}
             className={cn(
@@ -101,7 +102,7 @@ export const TimelineBar = memo(function TimelineBar({
               rect.clampedEnd && 'rounded-r-none border-r-0',
               overdue && 'ring-1 ring-overdue/40',
               done && 'opacity-45',
-              selected && 'ring-2 ring-ring/70',
+              selected && 'ring-2 ring-primary/70',
               dragging !== null && 'z-10 cursor-grabbing shadow-md',
             )}
             style={

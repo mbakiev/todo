@@ -156,6 +156,7 @@ function DayCell({ date, today, inMonth, highlighted }: DayCellProps) {
       ref={setNodeRef}
       data-date={date}
       data-in-month={inMonth || undefined}
+      aria-current={isToday ? 'date' : undefined}
       aria-label={dayLabelFormat.format(localDateToDate(date))}
       onClick={() => useUiStore.getState().openNewTaskDialog({ dueDate: date })}
       className={cn(
@@ -197,6 +198,7 @@ function MorePopover({
   style: CSSProperties
 }) {
   const [open, setOpen] = useState(false)
+  const selectedTaskId = useUiStore((s) => s.selectedTaskId)
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -223,7 +225,11 @@ function MorePopover({
                   <button
                     type="button"
                     data-task-id={t.id}
-                    className="flex h-full w-full rounded-[4px] text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                    data-selected={t.id === selectedTaskId || undefined}
+                    className={cn(
+                      'flex h-full w-full rounded-[4px] text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/60',
+                      t.id === selectedTaskId && 'ring-2 ring-primary/70',
+                    )}
                     onClick={() => {
                       setOpen(false)
                       openTask(t.id)
@@ -445,6 +451,7 @@ export function CalendarView() {
         {Array.from({ length: DAYS_PER_WEEK }, (_, i) => (
           <div
             key={i}
+            data-weekday={(weekStartsOn + i) % 7}
             className="h-7 px-2.5 text-right text-[11px] leading-7 font-medium tracking-wide text-muted-foreground uppercase"
           >
             {weekdayShort(weekStartsOn + i)}

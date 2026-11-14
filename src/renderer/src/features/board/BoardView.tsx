@@ -118,7 +118,7 @@ export function BoardView({ scope }: BoardViewProps) {
         ))}
       </div>
 
-      <DragOverlay dropAnimation={dropAnimation}>
+      <DragOverlay dropAnimation={dropAnimation} className="board-drag-overlay">
         {dnd.activeTask && (
           <CardBody task={dnd.activeTask} selected={dnd.activeTask.id === selectedId} overlay />
         )}

@@ -50,12 +50,7 @@ export function TimelineToolbar({
         className={SEGMENTED_CLASS}
       >
         {ZOOMS.map((z) => (
-          <ToggleGroupItem
-            key={z}
-            value={z}
-            data-zoom={z}
-            className={SEGMENT_CLASS}
-          >
+          <ToggleGroupItem key={z} value={z} data-zoom={z} className={SEGMENT_CLASS}>
             {ZOOM_LABELS[z]}
           </ToggleGroupItem>
         ))}

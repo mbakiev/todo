@@ -47,7 +47,6 @@ const LEFT_W = 260
 const ROW_H = 32
 const GROUP_ROW_H = 30
 
-
 /** Grid background: weekend shading + day/week lines as repeating CSS gradients. */
 function gridStyle(range: DateRange, zoom: Zoom, weekStartsOn: WeekStartsOn): CSSProperties {
   const dw = DAY_WIDTH[zoom]
@@ -289,6 +288,7 @@ export function TimelineView() {
               <div
                 aria-hidden
                 data-testid="timeline-today-line"
+                data-date={today}
                 className="pointer-events-none absolute inset-y-0 w-px bg-primary/80"
                 style={{ left: todayX + dw / 2 }}
               />

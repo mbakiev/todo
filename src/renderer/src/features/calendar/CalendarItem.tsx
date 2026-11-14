@@ -6,6 +6,7 @@ import type { LocalDate, Priority, Task } from '@shared/types'
 import { isOverdue } from '@shared/views'
 import { TaskContextMenu } from '@/components/task'
 import { cn } from '@/lib/utils'
+import { useUiStore } from '@/stores/uiStore'
 import type { WeekSegment } from './calendarLayout'
 
 const BAR_CLASS: Record<Priority, string> = {
@@ -104,6 +105,7 @@ export function CalendarItem({
   onOpen,
 }: CalendarItemProps) {
   const { task } = piece
+  const selected = useUiStore((s) => s.selectedTaskId === task.id)
   const { attributes, listeners, setNodeRef } = useDraggable({
     id: `${task.id}|${weekStart}|${piece.startCol}`,
     data: { taskId: task.id } satisfies DragData,
@@ -115,6 +117,7 @@ export function CalendarItem({
         type="button"
         data-task-id={task.id}
         data-kind={piece.kind}
+        data-selected={selected || undefined}
         {...attributes}
         {...listeners}
         aria-label={task.title}
@@ -122,6 +125,8 @@ export function CalendarItem({
         className={cn(
           'pointer-events-auto absolute flex cursor-default outline-none focus-visible:ring-2 focus-visible:ring-ring/60',
           piece.kind === 'chip' ? 'rounded-[4px]' : '',
+          // Selected (detail panel open) looks the same as on board cards and timeline bars.
+          selected && 'rounded-[4px] ring-2 ring-primary/70',
           dimmed && 'opacity-30',
         )}
         style={style}
