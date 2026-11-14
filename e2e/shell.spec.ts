@@ -367,3 +367,17 @@ test('a global shortcut that failed to register is announced once, with a way to
     }),
   ).toBeVisible()
 })
+
+test('a reload while the shortcut recorder is listening resumes the global shortcuts', async () => {
+  shell = await launchShell()
+  const { app, page } = shell
+  await openSettings(page, 'shortcuts')
+  await page.getByRole('button', { name: 'Quick add shortcut' }).click()
+  await expect(page.getByText('Press shortcut…')).toBeVisible()
+  // Suspended while recording.
+  await expect.poll(() => hook(app, 'triggerShortcut', 'quickAdd')).toBe(false)
+  // The page goes away without ending the recording (reload, crash, navigation).
+  await page.reload()
+  await page.waitForSelector('[data-slot="view"]')
+  await expect.poll(() => hook(app, 'triggerShortcut', 'quickAdd')).toBe(true)
+})

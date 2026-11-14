@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain, type WebContents } from 'electron'
 import { z } from 'zod'
 import { describeValidationIssue } from '@shared/validationMessage'
 
@@ -22,6 +22,23 @@ export function handle<A extends z.ZodTuple, R>(
       throw new Error(describeValidationIssue(issue))
     }
     return fn(...(parsed.data as z.output<A>))
+  })
+}
+
+/** Like `handle`, but `fn` also gets the calling renderer's webContents (first argument). */
+export function handleWithSender<A extends z.ZodTuple, R>(
+  channel: string,
+  args: A,
+  fn: (sender: WebContents, ...parsed: z.output<A>) => R | Promise<R>,
+): void {
+  ipcMain.removeHandler(channel)
+  ipcMain.handle(channel, async (event, ...raw: unknown[]) => {
+    const parsed = args.safeParse(raw)
+    if (!parsed.success) {
+      console.warn(`[ipc] invalid input for ${channel}`, parsed.error.issues)
+      throw new Error(describeValidationIssue(parsed.error.issues[0]))
+    }
+    return fn(event.sender, ...(parsed.data as z.output<A>))
   })
 }
 

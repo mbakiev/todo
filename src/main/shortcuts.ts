@@ -5,7 +5,7 @@
 // unit-tested with a fake registrar. In test runs (isTestRun) a fake registrar is used so
 // e2e tests never grab real OS-wide hotkeys; tests trigger shortcuts through the
 // `__martinTodosTest` hook instead.
-import { globalShortcut } from 'electron'
+import { globalShortcut, type WebContents } from 'electron'
 import { normalizeAccelerator } from '@shared/accelerators'
 import type { Settings, ShortcutStatus } from '@shared/types'
 import type { AppContext } from './context'
@@ -16,6 +16,7 @@ import {
   type ShortcutName,
   type ShortcutRegistrar,
 } from './shortcutManager'
+import { createSuspensionGuard, type SuspensionGuard } from './shortcutSuspension'
 import { toggleMainWindow } from './windows/mainWindow'
 import { toggleQuickAdd } from './windows/quickAddWindow'
 
@@ -101,11 +102,27 @@ export function getShortcutStatus(): ShortcutStatus {
   )
 }
 
-/** While the Settings recorder is listening, real shortcuts must not fire. */
-export function setGlobalShortcutsSuspended(ctx: AppContext, suspended: boolean): void {
+let guard: SuspensionGuard | null = null
+
+/**
+ * While the Settings recorder is listening, real shortcuts must not fire. The suspension is
+ * tied to the renderer that asked for it: if that page is destroyed, crashes, reloads or
+ * navigates before resuming, main resumes the shortcuts itself.
+ */
+export function setGlobalShortcutsSuspended(
+  ctx: AppContext,
+  suspended: boolean,
+  sender?: WebContents,
+): void {
   const m = getManager(ctx)
-  if (suspended) m.suspend()
-  else ctx.broadcastShortcutStatus(m.resume())
+  guard ??= createSuspensionGuard(() => ctx.broadcastShortcutStatus(m.resume()))
+  if (suspended) {
+    m.suspend()
+    if (sender) guard.suspendedBy(sender)
+  } else {
+    guard.resumed()
+    ctx.broadcastShortcutStatus(m.resume())
+  }
 }
 
 /** Called on will-quit. */

@@ -7,7 +7,7 @@ import { getShortcutStatus, setGlobalShortcutsSuspended } from '../shortcuts'
 import { openSettingsInMainWindow, showMainWindow } from '../windows/mainWindow'
 import { hideQuickAdd, resizeQuickAdd } from '../windows/quickAddWindow'
 import { rendererFlushed } from '../windows/rendererFlush'
-import { handle, noArgs } from './handle'
+import { handle, handleWithSender, noArgs } from './handle'
 
 export function registerAppHandlers(ctx: AppContext): void {
   handle(IPC.app.getInfo, noArgs, () => ({
@@ -22,8 +22,8 @@ export function registerAppHandlers(ctx: AppContext): void {
   handle(IPC.app.hideQuickAdd, noArgs, () => hideQuickAdd(ctx))
   handle(IPC.app.resizeQuickAdd, z.tuple([quickAddHeightSchema]), (h) => resizeQuickAdd(ctx, h))
   handle(IPC.app.getShortcutStatus, noArgs, () => getShortcutStatus())
-  handle(IPC.app.setGlobalShortcutsSuspended, z.tuple([z.boolean()]), (suspended) =>
-    setGlobalShortcutsSuspended(ctx, suspended),
+  handleWithSender(IPC.app.setGlobalShortcutsSuspended, z.tuple([z.boolean()]), (sender, s) =>
+    setGlobalShortcutsSuspended(ctx, s, sender),
   )
   handle(IPC.app.flushDone, z.tuple([z.number().int().positive()]), (id) => rendererFlushed(id))
 }
