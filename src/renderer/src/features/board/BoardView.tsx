@@ -90,7 +90,7 @@ export function BoardView({ scope }: BoardViewProps) {
             dragging={dragging}
             emptyText={
               filteredAway && status === 'not_started'
-                ? 'Nothing on this board matches the filter'
+                ? 'No tasks match the current filters.'
                 : emptyText(status, scope, filtered)
             }
             header={status === 'not_started' ? <InlineAddTask scope={scope} /> : undefined}
