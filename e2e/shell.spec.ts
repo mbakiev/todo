@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
+import { defaultShortcuts } from '../src/shared/constants'
 import type { Api } from '../src/shared/ipc'
 import type { ExportFile } from '../src/shared/types'
 import { windowByEntry } from './launch'
@@ -16,6 +17,8 @@ test.afterEach(async () => {
 })
 
 type W = { api: Api }
+// This platform's default global shortcuts (macOS Alt+Shift+…, Windows / Linux Ctrl+Alt+…).
+const DEFAULTS = defaultShortcuts(process.platform)
 const api = <T>(page: Page, fn: (api: Api) => Promise<T>): Promise<T> =>
   page.evaluate(`(${fn.toString()})(globalThis.api)`) as Promise<T>
 const listTasks = (page: Page) => page.evaluate(() => (globalThis as unknown as W).api.tasks.list())
@@ -28,12 +31,12 @@ async function openSettings(page: Page, section: string): Promise<void> {
 }
 
 test('closing the main window hides it; the app keeps running and can be re-shown', async () => {
-  shell = await launchShell({ env: { MARTIN_TODOS_FAKE_TAKEN_SHORTCUTS: 'Alt+Shift+T' } })
+  shell = await launchShell({ env: { MARTIN_TODOS_FAKE_TAKEN_SHORTCUTS: DEFAULTS.toggleApp } })
   const { app, page } = shell
 
   // Registration failures are reported, never silent.
   const status = await page.evaluate(() => (globalThis as unknown as W).api.app.getShortcutStatus())
-  expect(status.quickAdd).toEqual({ accelerator: 'Alt+Shift+N', registered: true })
+  expect(status.quickAdd).toEqual({ accelerator: DEFAULTS.quickAdd, registered: true })
   expect(status.toggleApp.registered).toBe(false)
   expect(status.toggleApp.error).toMatch(/in use/)
 

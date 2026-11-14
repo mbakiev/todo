@@ -111,8 +111,14 @@ test('a pre-range stub follows the visible edge and drags into range', async () 
   if (!box || !pane) throw new Error('not visible')
   expect(Math.abs(box.x - (pane.x + pane.width))).toBeLessThan(3)
 
-  // The stub sits on (range start + 10 days) = today + 3; drop it 2 days later.
-  await drag(page, { x: box.x + box.width / 2, y: box.y + box.height / 2 }, 2 * 40)
+  // The stub sits on (range start + 10 days) = today + 3; drop it 2 days later. The stub is
+  // inside the grid's left auto-scroll zone (48px), so leave it in one move: lingering there
+  // scrolls the chart left by a timing-dependent amount (a day too early on slower machines).
+  const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+  await page.mouse.move(from.x, from.y)
+  await page.mouse.down()
+  await page.mouse.move(from.x + 60, from.y)
+  await page.mouse.move(from.x + 2 * 40, from.y)
   await page.mouse.up()
   await expect(b).toHaveAttribute('data-end', localDate(5))
   await expect(b).not.toHaveAttribute('data-clamped', /.+/)

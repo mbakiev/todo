@@ -3,6 +3,7 @@
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
+import { defaultShortcuts } from '../src/shared/constants'
 import type { Api } from '../src/shared/ipc'
 import { launchShell, MOD, openQuickAdd, type ShellApp } from './shellHelpers'
 
@@ -25,7 +26,7 @@ test('quick add, new-task dialog and settings (light + dark)', async () => {
   shell = await launchShell({
     seed: true,
     // One refused combo so the Shortcuts section shows its failure state.
-    env: { MARTIN_TODOS_FAKE_TAKEN_SHORTCUTS: 'Alt+Shift+T' },
+    env: { MARTIN_TODOS_FAKE_TAKEN_SHORTCUTS: defaultShortcuts(process.platform).toggleApp },
   })
   const { app, page } = shell
   await app.evaluate(({ BrowserWindow }) =>

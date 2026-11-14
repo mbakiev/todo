@@ -81,12 +81,17 @@ test('edits title and rich description, and they persist', async () => {
   expect(saved.description).toContain('- [ ] Book venue\n- [ ] Order lunch')
   expect(saved.description).toMatch(/\| Who +\|/)
 
-  // A pasted Markdown table (plain text) becomes a real table.
-  await editor(page).click()
-  await page.keyboard.press('ControlOrMeta+End')
+  // A pasted Markdown table (plain text) becomes a real table. Paste into a fresh paragraph
+  // after the heading: the document ends inside a table, where a paste stays cell text, and
+  // where a click or "document end" key lands near it varies by OS and timing.
+  const heading = editor(page).locator('h1')
+  const hBox = await heading.boundingBox()
+  if (!hBox) throw new Error('heading not visible')
+  await heading.click({ position: { x: hBox.width - 2, y: hBox.height / 2 } })
+  await page.keyboard.press('Enter')
   await pastePlainText(page, '| Item | Owner |\n| --- | --- |\n| Venue | **Anna** |')
   await expect(editor(page).locator('table')).toHaveCount(2)
-  await expect(editor(page).locator('table').nth(1).locator('strong')).toHaveText('Anna')
+  await expect(editor(page).locator('table').first().locator('strong')).toHaveText('Anna')
   await closePanel(page)
   await expect
     .poll(async () => (await dbTask(page, 'Reply to Anna: offsite agenda')).description)
@@ -157,7 +162,8 @@ test('copy as Markdown puts title, metadata and description on the clipboard', a
   await openTask(page, 'Q4 planning follow-ups')
   await panel(page).getByRole('button', { name: 'Copy as Markdown' }).click()
   await expect(page.getByText('Copied as Markdown')).toBeVisible()
-  const text = await app.evaluate(({ clipboard }) => clipboard.readText())
+  // Windows' clipboard stores text with CRLF line breaks.
+  const text = (await app.evaluate(({ clipboard }) => clipboard.readText())).replace(/\r\n/g, '\n')
   expect(text).toMatch(/^# Q4 planning follow-ups\n\n\*\*Status:\*\* .+ · \*\*Priority:\*\* /)
   expect(text).toContain('- [x] Share notes in #planning')
   expect(text).toContain('[the planning doc](https://example.com/planning)')
@@ -190,7 +196,10 @@ test('screenshots: detail panel (light + dark)', async () => {
 
 test('at its minimum width the panel stays on one line: compact footer, collapsed toolbar', async () => {
   launched = await launchApp({ seed: true })
-  const { page } = launched
+  const { page, app } = launched
+  // The panel is clamped to leave the main view 640px, so the 480px default needs a window at
+  // least 1120px wide; don't depend on the display's size (CI runners' screens are 1024×768).
+  await resizeMainWindow(app, 1280, 820)
   await page.evaluate(() =>
     (globalThis as unknown as { api: Api }).api.settings.set({ detailPanelWidth: 360 }),
   )

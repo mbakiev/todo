@@ -1,7 +1,12 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
+import {
+  _electron as electron,
+  type ElectronApplication,
+  type Locator,
+  type Page,
+} from '@playwright/test'
 
 export interface LaunchedApp {
   app: ElectronApplication
@@ -31,7 +36,20 @@ async function mainWindowPage(app: ElectronApplication): Promise<Page> {
 }
 
 /**
- * Resizes the main window. Never use `BrowserWindow.getAllWindows()[0]`: the hidden quick-add
+ * Puts the caret at the very end of a rich-text editor by clicking the end of its last block.
+ * Keyboard shortcuts for "document end" differ per OS (Cmd+End does nothing on macOS) and
+ * were unreliable on CI runners; a click is the same everywhere.
+ */
+export async function caretToEnd(editor: Locator): Promise<void> {
+  const last = editor.locator(':scope > *').last()
+  const box = await last.boundingBox()
+  if (!box) throw new Error('editor has no visible last block')
+  await last.click({ position: { x: box.width - 2, y: box.height - 2 } })
+}
+
+/**
+ * Resizes the main window's content area (what the renderer lays out in; on Windows the frame
+ * is extra). Never use `BrowserWindow.getAllWindows()[0]`: the hidden quick-add
  * window exists too and may come first.
  */
 export async function resizeMainWindow(
@@ -39,15 +57,26 @@ export async function resizeMainWindow(
   width: number,
   height: number,
 ): Promise<void> {
-  await app.evaluate(
-    ({ BrowserWindow }, [w, h]) => {
+  // The size the OS actually granted (it may clamp to the screen).
+  const [w, h] = await app.evaluate(
+    ({ BrowserWindow }, [cw, ch]) => {
       const win = BrowserWindow.getAllWindows().find((x) =>
         x.webContents.getURL().split(/[?#]/)[0]?.endsWith('/index.html'),
       )
       if (!win) throw new Error('main window not found')
-      win.setSize(w, h)
+      win.setContentSize(cw, ch)
+      return win.getContentSize()
     },
     [width, height] as const,
+  )
+  // The renderer relayouts asynchronously; geometry read before that is stale (slow runners).
+  const page = await windowByEntry(app, 'index')
+  await page.waitForFunction(
+    ([ew, eh]) => {
+      const g = globalThis as unknown as { innerWidth: number; innerHeight: number }
+      return g.innerWidth === ew && g.innerHeight === eh
+    },
+    [w, h] as const,
   )
 }
 

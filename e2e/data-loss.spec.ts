@@ -3,6 +3,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import type { Api } from '../src/shared/ipc'
 import type { Task } from '../src/shared/types'
+import { caretToEnd } from './launch'
 import { hook, launchShell, tempUserData, type ShellApp } from './shellHelpers'
 
 let shell: ShellApp | undefined
@@ -35,8 +36,7 @@ async function hideMainWindow(s: ShellApp): Promise<void> {
 }
 
 async function typeDescription(page: Page, text: string): Promise<void> {
-  await editor(page).click()
-  await page.keyboard.press('ControlOrMeta+End')
+  await caretToEnd(editor(page))
   await page.keyboard.type(text)
 }
 
@@ -56,14 +56,13 @@ for (const field of ['description', 'title'] as const) {
     else await typeDescription(page, marker)
     const typedAt = Date.now()
     await hideMainWindow(shell)
-    // Saved by the hide itself, well before the 500 ms debounce would have fired.
-    await expect
-      .poll(async () => (await dbTasks(page)).some((t) => t[field].includes(marker.trim())), {
-        timeout: 400,
-        intervals: [25],
-      })
-      .toBe(true)
-    expect(Date.now() - typedAt).toBeLessThan(1500)
+    const saved = async (): Promise<Task | undefined> =>
+      (await dbTasks(page)).find((t) => t[field].includes(marker.trim()))
+    await expect.poll(async () => (await saved()) !== undefined).toBe(true)
+    // Saved by the hide itself, before the 500 ms debounce would have fired. Judged by the
+    // row's own updatedAt (same clock), not by how long the polling round trips take — a
+    // busy CI runner can need several hundred ms per IPC call.
+    expect(((await saved())?.updatedAt ?? Infinity) - typedAt).toBeLessThan(500)
   })
 
   test(`${field}: quitting inside the debounce keeps it after relaunch`, async () => {
@@ -122,6 +121,9 @@ test('a second quit request while the flush is running cannot close the DB early
 })
 
 test('SIGTERM saves pending edits before exiting', async () => {
+  // Windows has no catchable SIGTERM: Node's kill('SIGTERM') there is TerminateProcess. The
+  // Windows equivalents (logoff / shutdown) go through query-session-end / session-end.
+  test.skip(process.platform === 'win32', 'POSIX signals only; Windows kill() cannot be caught')
   const userData = tempUserData()
   shell = await launchShell({ userData, seed: true })
   await openTask(shell.page, TASK)

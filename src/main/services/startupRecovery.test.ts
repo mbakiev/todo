@@ -9,6 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { DatabaseSync } from 'node:sqlite'
 import { join } from 'node:path'
 import { openDatabase, SchemaTooNewError } from '../db'
 import { migrate } from '../db/migrate'
@@ -24,6 +25,21 @@ import {
   type StartupChoice,
   type StartupDialogSpec,
 } from './startupRecovery'
+
+/**
+ * Makes `file` impossible to rename until the returned function is called. POSIX: a read-only
+ * parent folder. Windows ignores folder permission bits; there, hold the file open the way
+ * another SQLite program (e.g. DB Browser) would: SQLite opens files without
+ * FILE_SHARE_DELETE, so renaming fails while the app can still open (and read) the file.
+ */
+function blockRename(dir: string, file: string): () => void {
+  if (process.platform === 'win32') {
+    const holder = new DatabaseSync(file)
+    return () => holder.close()
+  }
+  chmodSync(dir, 0o555)
+  return () => chmodSync(dir, 0o755)
+}
 
 const ids = (spec: StartupDialogSpec): string[] => spec.buttons.map((b) => b.id)
 const backup = { createdAt: new Date(2026, 10, 1, 9, 30).getTime() }
@@ -285,12 +301,12 @@ describe('openDatabaseWithRecoveryFlow', () => {
       r.db.close()
       return 'repos'
     }, ['restore', 'quit'])
-    // A read-only data folder: the damaged file cannot be renamed inside it.
-    chmodSync(dataDir, 0o555)
+    // The damaged file cannot be renamed (read-only folder / held open on Windows).
+    const unblock = blockRename(dataDir, dbFile)
     try {
       expect(await openDatabaseWithRecoveryFlow(d)).toBeNull()
     } finally {
-      chmodSync(dataDir, 0o755)
+      unblock()
     }
     expect(d.restoreFailed).not.toHaveBeenCalled()
     expect(d.asked).toHaveLength(2)

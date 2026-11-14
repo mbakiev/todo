@@ -11,14 +11,25 @@ test.afterEach(async () => {
   shell = undefined
 })
 
+/**
+ * Crashes the window's renderer and waits until the main process has seen it go
+ * (`render-process-gone`). Without the wait the next "alive?" check can still see the old
+ * renderer (on Windows the crash is noticed noticeably later) and a second crash would hit
+ * the same dying process, so the crash loop would never be counted.
+ */
 async function crash(app: ElectronApplication, entry: 'index' | 'quick-add'): Promise<void> {
-  await app.evaluate(({ BrowserWindow }, e) => {
-    const win = BrowserWindow.getAllWindows().find((w) =>
-      w.webContents.getURL().split(/[?#]/)[0]?.endsWith(`/${e}.html`),
-    )
-    if (!win) throw new Error(`no ${e} window`)
-    win.webContents.forcefullyCrashRenderer()
-  }, entry)
+  await app.evaluate(
+    ({ BrowserWindow }, e) =>
+      new Promise<void>((resolveGone, reject) => {
+        const win = BrowserWindow.getAllWindows().find((w) =>
+          w.webContents.getURL().split(/[?#]/)[0]?.endsWith(`/${e}.html`),
+        )
+        if (!win) return reject(new Error(`no ${e} window`))
+        win.webContents.once('render-process-gone', () => resolveGone())
+        win.webContents.forcefullyCrashRenderer()
+      }),
+    entry,
+  )
 }
 
 async function rendererAlive(app: ElectronApplication, entry: 'index' | 'quick-add') {
