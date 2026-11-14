@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils'
-import { useTagsById } from '@/stores/selectors'
+import { useTaskTags } from '@/stores/selectors'
 import { TagChip } from './TagChip'
 
 export interface TaskTagsProps {
@@ -9,10 +9,9 @@ export interface TaskTagsProps {
   className?: string
 }
 
-/** Renders a task's tag chips (resolving ids via the tags store). */
+/** Renders a task's tag chips (resolved via the tags store, alphabetical by name). */
 export function TaskTags({ tagIds, max = 3, className }: TaskTagsProps) {
-  const byId = useTagsById()
-  const tags = tagIds.map((id) => byId[id]).filter((t) => t !== undefined)
+  const tags = useTaskTags(tagIds)
   if (tags.length === 0) return null
   const shown = tags.slice(0, max)
   const rest = tags.length - shown.length

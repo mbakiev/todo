@@ -26,9 +26,9 @@ import {
   weekdayShort,
 } from '@shared/dates'
 import type { LocalDate, Task } from '@shared/types'
-import { filterCalendar, taskSpan, tasksInRange } from '@shared/views'
+import { dateBadge, filterCalendar, taskSpan, tasksInRange } from '@shared/views'
 import { ToolbarButton, ToolbarControls } from '@/app/ToolbarControls'
-import { TaskContextMenu } from '@/components/task'
+import { StartDateBadge, TaskContextMenu } from '@/components/task'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -220,6 +220,7 @@ function MorePopover({
           {tasks.map((t) => {
             const span = taskSpan(t)
             const kind = span && span.start !== span.end ? 'bar' : 'chip'
+            const badge = dateBadge(t)
             return (
               <li key={t.id} className="h-6">
                 <TaskContextMenu task={t}>
@@ -228,7 +229,7 @@ function MorePopover({
                     data-task-id={t.id}
                     data-selected={t.id === selectedTaskId || undefined}
                     className={cn(
-                      'flex h-full w-full rounded-[4px] text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/60',
+                      'flex h-full w-full items-center rounded-[4px] text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/60',
                       t.id === selectedTaskId && 'ring-2 ring-primary/70',
                     )}
                     onClick={() => {
@@ -242,7 +243,11 @@ function MorePopover({
                       today={today}
                       continuesBefore={!!span && span.start < date}
                       continuesAfter={!!span && span.end > date}
+                      className="min-w-0 flex-1"
                     />
+                    {badge?.kind === 'start' && (
+                      <StartDateBadge startDate={badge.date} className="shrink-0 px-1.5" />
+                    )}
                   </button>
                 </TaskContextMenu>
               </li>

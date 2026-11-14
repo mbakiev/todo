@@ -308,3 +308,46 @@ export function checklistProgress(markdown: string): { done: number; total: numb
 export function hasDescription(task: Pick<Task, 'description'>): boolean {
   return task.description.trim() !== ''
 }
+
+// ---------------------------------------------------------------------------
+// Display order and badges
+// ---------------------------------------------------------------------------
+
+/**
+ * Tag display order everywhere a task's tags are shown (cards, list, detail panel, quick
+ * add, Copy as Markdown): alphabetical by name, case-insensitive; ties by id, so the order
+ * never depends on load or insertion order.
+ */
+export function compareTagsByName(
+  a: { name: string; id?: string },
+  b: { name: string; id?: string },
+): number {
+  const byName = a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+  if (byName !== 0) return byName
+  const ai = a.id ?? ''
+  const bi = b.id ?? ''
+  return ai < bi ? -1 : ai > bi ? 1 : 0
+}
+
+/** A task's tags resolved by id (unknown ids skipped), in display order. */
+export function tagsInDisplayOrder<T extends { id: string; name: string }>(
+  tagIds: readonly string[],
+  byId: Readonly<Record<string, T>>,
+): T[] {
+  return tagIds
+    .map((id) => byId[id])
+    .filter((t): t is T => t !== undefined)
+    .sort(compareTagsByName)
+}
+
+export type DateBadgeInfo = { kind: 'due'; date: LocalDate } | { kind: 'start'; date: LocalDate }
+
+/**
+ * The single date a compact task row shows: the due date when there is one (coloured when
+ * overdue / due today), otherwise a muted "Starts <date>" for a start-only task.
+ */
+export function dateBadge(task: Pick<Task, 'startDate' | 'dueDate'>): DateBadgeInfo | null {
+  if (task.dueDate) return { kind: 'due', date: task.dueDate }
+  if (task.startDate) return { kind: 'start', date: task.startDate }
+  return null
+}

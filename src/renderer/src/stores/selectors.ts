@@ -1,7 +1,13 @@
 // Memoised selector hooks over the stores. Views should read tasks through these.
 import { useMemo } from 'react'
 import type { Settings, Tag, Task } from '@shared/types'
-import { applyFilter, isFilterActive, type TaskFilter } from '@shared/views'
+import {
+  applyFilter,
+  compareTagsByName,
+  isFilterActive,
+  tagsInDisplayOrder,
+  type TaskFilter,
+} from '@shared/views'
 import { useSettingsStore } from './settingsStore'
 import { useTagsStore } from './tagsStore'
 import { useTasksStore } from './tasksStore'
@@ -24,13 +30,13 @@ export function useTagsById(): Record<string, Tag> {
 /** All tags sorted by name. */
 export function useTags(): Tag[] {
   const byId = useTagsStore((s) => s.byId)
-  return useMemo(
-    () =>
-      Object.values(byId).sort((a, b) =>
-        a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
-      ),
-    [byId],
-  )
+  return useMemo(() => Object.values(byId).sort(compareTagsByName), [byId])
+}
+
+/** A task's tags in display order (alphabetical, case-insensitive; see shared/views.ts). */
+export function useTaskTags(tagIds: readonly string[]): Tag[] {
+  const byId = useTagsStore((s) => s.byId)
+  return useMemo(() => tagsInDisplayOrder(tagIds, byId), [tagIds, byId])
 }
 
 export function useSettings(): Settings {

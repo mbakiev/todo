@@ -100,3 +100,66 @@ test('collapsed search expands on click and Cmd/Ctrl+F, keeps its text', async (
   await expect(input).toBeVisible()
   await expect(input).toHaveValue('plumber')
 })
+
+test('toolbar and detail-panel header bottoms line up (one-row and two-row toolbar)', async () => {
+  launched = await launchApp({ seed: true })
+  const { page, app } = launched
+  await setPanel(page, true)
+  const bottoms = async (): Promise<{ toolbar: number; panel: number; rows: number }> =>
+    (await page.evaluate(`(() => {
+      const t = document.querySelector('main > header').getBoundingClientRect()
+      const p = document.querySelector('[data-testid="detail-header"]').getBoundingClientRect()
+      const h1 = document.querySelector('main > header h1').getBoundingClientRect()
+      const slot = document.querySelector('[data-slot="toolbar-controls"]').getBoundingClientRect()
+      return { toolbar: t.bottom, panel: p.bottom, rows: slot.top >= h1.bottom - 1 && slot.height > 0 ? 2 : 1 }
+    })()`)) as { toolbar: number; panel: number; rows: number }
+  await resizeMainWindow(app, 1400, 860)
+  await expect.poll(async () => (await bottoms()).rows).toBe(1)
+  let b = await bottoms()
+  expect(b.panel).toBe(b.toolbar)
+  // Narrow enough (with the panel docked) for the toolbar to wrap onto two rows.
+  await resizeMainWindow(app, 1000, 860)
+  await expect.poll(async () => (await bottoms()).rows).toBe(2)
+  b = await bottoms()
+  expect(b.panel).toBe(b.toolbar)
+})
+
+test('Esc returns focus to a toolbar menu trigger without re-opening its tooltip', async () => {
+  launched = await launchApp({ seed: true })
+  const { page } = launched
+  await resizeMainWindow(launched.app, 1400, 860)
+  const tooltip = page.locator('[data-slot="tooltip-content"]')
+  for (const name of ['Filter by priority', 'Filter by tag']) {
+    const trigger = page.getByRole('button', { name })
+    await trigger.click()
+    await expect(page.locator('[data-radix-popper-content-wrapper]')).toHaveCount(1)
+    await page.keyboard.press('Escape')
+    await expect(trigger).toBeFocused()
+    await page.waitForTimeout(600) // longer than the tooltip delay
+    await expect(tooltip).toHaveCount(0)
+  }
+  // List → Group menu too.
+  await page.locator('[data-view="list"]').click()
+  const group = page.getByRole('button', { name: /^Group by/ })
+  await group.click()
+  await page.keyboard.press('Escape')
+  await expect(group).toBeFocused()
+  await page.waitForTimeout(600)
+  await expect(tooltip).toHaveCount(0)
+  // Keyboard navigation still shows tooltips.
+  await page.keyboard.press('Shift+Tab')
+  await page.keyboard.press('Tab')
+  await expect(tooltip).toHaveCount(1)
+})
+
+test('with a hover tooltip open, one Esc closes the detail panel', async () => {
+  launched = await launchApp({ seed: true })
+  const { page } = launched
+  await resizeMainWindow(launched.app, 1400, 860)
+  await setPanel(page, true)
+  await page.getByRole('button', { name: 'New task' }).hover()
+  await expect(page.locator('[data-slot="tooltip-content"]')).toHaveCount(1)
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('task-detail')).toHaveCount(0)
+  await expect(page.locator('[data-slot="tooltip-content"]')).toHaveCount(0)
+})

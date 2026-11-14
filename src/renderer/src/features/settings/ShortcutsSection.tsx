@@ -1,12 +1,13 @@
 import { AlertTriangle, CheckCircle2, RotateCcw, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
-import { acceleratorParts, acceleratorsEqual } from '@shared/accelerators'
+import { acceleratorsEqual } from '@shared/accelerators'
 import { DEFAULT_SETTINGS } from '@shared/constants'
 import type { Settings, ShortcutStatus } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { api } from '@/lib/api'
-import { appInfo, isMac } from '@/lib/platform'
+import { appInfo } from '@/lib/platform'
+import { shortcutParts } from '@/lib/shortcuts'
 import { useSettings } from '@/stores/selectors'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { KeyCombo, SectionHeading } from './parts'
@@ -80,7 +81,6 @@ export function ShortcutsSection() {
   const set = useSettingsStore((s) => s.set)
   const status = useShortcutStatus()
   const platform = appInfo().platform
-  const mod = isMac() ? 'Command' : 'Control'
   const setShortcut = (name: Name, accelerator: string): void => {
     const patch: Partial<Settings['shortcuts']> = { [name]: accelerator }
     void set({ shortcuts: patch })
@@ -98,23 +98,14 @@ export function ShortcutsSection() {
   )
 
   const inApp: Array<{ label: string; parts: string[] }> = [
-    { label: 'New task', parts: acceleratorParts(`${mod}+N`, platform) },
-    { label: 'Search', parts: acceleratorParts(`${mod}+F`, platform) },
-    {
-      label: 'Switch view',
-      parts: [...acceleratorParts(`${mod}+1`, platform).slice(0, -1), '1 – 6'],
-    },
-    { label: 'Settings', parts: acceleratorParts(`${mod}+,`, platform) },
-    { label: 'Close panel or dialog', parts: ['Esc'] },
-    { label: 'Quick add: save', parts: acceleratorParts('Return', platform) },
-    {
-      label: 'Quick add: save from the notes field',
-      parts: acceleratorParts(`${mod}+Return`, platform),
-    },
-    {
-      label: 'New task dialog: save and add another',
-      parts: acceleratorParts(`${mod}+Shift+Return`, platform),
-    },
+    { label: 'New task', parts: shortcutParts('Mod+N') },
+    { label: 'Search', parts: shortcutParts('Mod+F') },
+    { label: 'Switch view', parts: [...shortcutParts('Mod+1').slice(0, -1), '1 – 6'] },
+    { label: 'Settings', parts: shortcutParts('Mod+,') },
+    { label: 'Close panel or dialog', parts: shortcutParts('Escape') },
+    { label: 'Quick add: save', parts: shortcutParts('Return') },
+    { label: 'Quick add: save from the notes field', parts: shortcutParts('Mod+Return') },
+    { label: 'New task dialog: save and add another', parts: shortcutParts('Mod+Shift+Return') },
   ]
 
   return (

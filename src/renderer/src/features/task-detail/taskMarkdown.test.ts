@@ -7,7 +7,7 @@ const tags: Record<string, Tag> = {
 }
 
 describe('taskToMarkdown', () => {
-  it('renders title, metadata line and description', () => {
+  it('renders title, metadata line (tags alphabetical) and description', () => {
     expect(
       taskToMarkdown(
         {
@@ -23,7 +23,7 @@ describe('taskToMarkdown', () => {
       ),
     ).toBe(
       '# Ship the release\n\n' +
-        '**Status:** In Progress · **Priority:** High · **Start:** 2026-11-10 · **Due:** 2026-11-14 · **Tags:** #work #ops\n\n' +
+        '**Status:** In Progress · **Priority:** High · **Start:** 2026-11-10 · **Due:** 2026-11-14 · **Tags:** #ops #work\n\n' +
         '- [ ] tag build\n- [x] notes\n',
     )
   })

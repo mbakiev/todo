@@ -32,6 +32,7 @@ function modifierAlias(token: string, platform: Platform): Modifier | null {
       return platform === 'darwin' ? 'Command' : 'Super'
     case 'commandorcontrol':
     case 'cmdorctrl':
+    case 'mod': // Tiptap / in-app spelling of the platform's primary modifier
       return platform === 'darwin' ? 'Command' : 'Control'
     default:
       return null
@@ -123,9 +124,10 @@ const WIN_LABELS: Record<Modifier, string> = {
 const MAC_KEY_SYMBOLS: Record<string, string> = {
   // U+FE0E forces text presentation (otherwise the emoji font draws a blue box).
   Return: '↩\uFE0E',
-  Escape: '⎋',
+  // Spelled out like the key caps: the ⎋ / ⇥ glyphs are unfamiliar to most people.
+  Escape: 'Esc',
   Space: 'Space',
-  Tab: '⇥',
+  Tab: 'Tab',
   Backspace: '⌫',
   Delete: '⌦',
   Up: '↑',
@@ -148,15 +150,21 @@ const WIN_KEY_LABELS: Record<string, string> = {
   Plus: '+',
 }
 
+/** Display label of one modifier: `⌃ ⌥ ⇧ ⌘` on macOS, `Ctrl Alt Shift Win` elsewhere. */
+export function modifierLabel(m: Modifier, platform: Platform): string {
+  return platform === 'darwin' ? MAC_SYMBOLS[m] : WIN_LABELS[m]
+}
+
 /**
  * Display parts for an accelerator, one per key cap: macOS uses ⌃⌥⇧⌘ symbols in Apple's
- * order, Windows uses `Ctrl`, `Alt`, `Shift`, `Win`. Empty array for empty/invalid input.
+ * order, Windows uses `Ctrl`, `Alt`, `Shift`, `Win` (same order). Empty array for
+ * empty/invalid input. The renderer reaches this only through `lib/shortcuts.ts`.
  */
 export function acceleratorParts(accel: string, platform: Platform): string[] {
   const p = parseAccelerator(accel, platform)
   if (!p) return []
   const mac = platform === 'darwin'
-  const mods = p.modifiers.map((m) => (mac ? MAC_SYMBOLS[m] : WIN_LABELS[m]))
+  const mods = p.modifiers.map((m) => modifierLabel(m, platform))
   const key = (mac ? MAC_KEY_SYMBOLS[p.key] : WIN_KEY_LABELS[p.key]) ?? p.key
   return [...mods, key]
 }

@@ -3,6 +3,7 @@ import { memo, useState, type CSSProperties, type PointerEvent as ReactPointerEv
 import { STATUS_LABELS } from '@shared/constants'
 import { formatShortDate } from '@shared/dates'
 import type { LocalDate, Priority, Task } from '@shared/types'
+import { dateBadge } from '@shared/views'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { measureLabel } from './measureText'
@@ -72,6 +73,8 @@ export const TimelineBar = memo(function TimelineBar({
   const showEndHandle = handle > 0 && !rect.clampedEnd
 
   const days = spanDays(rect.span)
+  // A start-only task reads "Starts <date>" (shared rule with cards and the calendar).
+  const startBadge = dateBadge(task)
   // A stub for a task entirely before the range follows the visible left edge of the grid,
   // so long-overdue work stays in sight however far the chart is scrolled.
   const sticky = rect.beforeRange
@@ -95,7 +98,9 @@ export const TimelineBar = memo(function TimelineBar({
             onPointerDown={(e) => onPointerDown(e, task, 'move')}
             className={cn(
               'pointer-events-auto',
-              'group/bar absolute top-1.5 flex h-5 items-center overflow-hidden border text-xs font-medium text-foreground select-none',
+              // overflow-clip, not -hidden: it clips the same but is no scroll container, so the
+              // label below can stick to the grid's visible left edge.
+              'group/bar absolute top-1.5 flex h-5 items-center overflow-clip border text-xs font-medium text-foreground select-none',
               'cursor-grab transition-[background-color,box-shadow] duration-100',
               BAR_FILL,
               pinnedLeft ? 'rounded-r-[5px] border-l-0' : 'rounded-[5px]',
@@ -127,9 +132,16 @@ export const TimelineBar = memo(function TimelineBar({
               />
             )}
             {inside && (
+              // Sticky: when the bar's start is scrolled under the left pane, the label stays
+              // in the visible part of the bar until the bar's end pushes it out.
               <span
-                className={cn('min-w-0 truncate', done && 'line-through')}
-                style={{ paddingLeft: pinnedLeft ? 2 : LABEL_PAD, paddingRight: LABEL_PAD }}
+                data-testid="timeline-bar-label"
+                className={cn('sticky min-w-0 truncate', done && 'line-through')}
+                style={{
+                  left: stickyLeft,
+                  paddingLeft: pinnedLeft ? 2 : LABEL_PAD,
+                  paddingRight: LABEL_PAD,
+                }}
               >
                 {label}
               </span>
@@ -157,7 +169,9 @@ export const TimelineBar = memo(function TimelineBar({
         <TooltipContent side="top" className="max-w-72 px-2.5 py-1.5">
           <div className="font-medium">{task.title}</div>
           <div className="mt-0.5 tabular-nums opacity-75">
-            {formatSpan(rect.span, today)} · {formatDuration(days)}
+            {startBadge?.kind === 'start'
+              ? `Starts ${formatShortDate(startBadge.date, today)}`
+              : `${formatSpan(rect.span, today)} · ${formatDuration(days)}`}
           </div>
           {(overdue || done) && (
             <div className="mt-0.5 opacity-75">

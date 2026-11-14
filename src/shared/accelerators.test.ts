@@ -54,6 +54,20 @@ describe('formatAccelerator', () => {
   })
 })
 
+describe('one canonical display order (every shortcut hint in the app)', () => {
+  it('orders macOS modifiers ⌃ ⌥ ⇧ ⌘ then the key, whatever the input order', () => {
+    expect(formatAccelerator('Mod+Shift+Return', 'darwin')).toBe('⇧⌘↩\uFE0E')
+    expect(formatAccelerator('Shift+Mod+S', 'darwin')).toBe('⇧⌘S')
+    expect(formatAccelerator('Mod+Alt+1', 'darwin')).toBe('⌥⌘1')
+    expect(formatAccelerator('Command+Shift+Alt+Control+K', 'darwin')).toBe('⌃⌥⇧⌘K')
+  })
+  it('orders Windows modifiers Ctrl+Alt+Shift+Win+Key', () => {
+    expect(formatAccelerator('Mod+Shift+Return', 'win32')).toBe('Ctrl+Shift+Enter')
+    expect(formatAccelerator('Super+Shift+Alt+Control+K', 'win32')).toBe('Ctrl+Alt+Shift+Win+K')
+    expect(formatAccelerator('Mod+,', 'win32')).toBe('Ctrl+,')
+  })
+})
+
 describe('recordFromKeyEvent', () => {
   it('waits while only modifiers are held', () => {
     expect(recordFromKeyEvent(key('AltLeft', { altKey: true }, 'Alt'), 'darwin')).toEqual({

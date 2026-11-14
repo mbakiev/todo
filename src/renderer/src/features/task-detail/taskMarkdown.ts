@@ -1,6 +1,7 @@
 // "Copy as Markdown": `# Title`, one metadata line, then the description.
 import { PRIORITY_LABELS, STATUS_LABELS } from '@shared/constants'
 import type { Tag, Task } from '@shared/types'
+import { tagsInDisplayOrder } from '@shared/views'
 
 type TaskFields = Pick<
   Task,
@@ -23,7 +24,7 @@ export function taskToMarkdown(task: TaskFields, tagsById: Record<string, Tag>):
   ]
   if (task.startDate) meta.push(`**Start:** ${task.startDate}`)
   if (task.dueDate) meta.push(`**Due:** ${task.dueDate}`)
-  const tags = task.tagIds.map((id) => tagsById[id]?.name).filter((n) => n !== undefined)
+  const tags = tagsInDisplayOrder(task.tagIds, tagsById).map((t) => t.name)
   if (tags.length) meta.push(`**Tags:** ${tags.map((n) => `#${n}`).join(' ')}`)
 
   const parts = [`# ${headingText(task.title)}`, meta.join(' · ')]

@@ -27,9 +27,10 @@ import {
   type DraftFieldName,
 } from '@/lib/draftRecovery'
 import { registerFlusher } from '@/lib/flush'
+import { formatShortcut } from '@/lib/shortcuts'
 import { cn } from '@/lib/utils'
 import { useToday } from '@/lib/useToday'
-import { useTagsById, useTask } from '@/stores/selectors'
+import { useTagsById, useTask, useTaskTags } from '@/stores/selectors'
 import { isTempId, useTasksStore } from '@/stores/tasksStore'
 import { setLeaveGuard, useUiStore } from '@/stores/uiStore'
 import { copyText } from './copyText'
@@ -238,7 +239,7 @@ function PanelBody({ task }: { task: Task }) {
 
   const isDone = task.status === 'done'
   const dueTone = isOverdue(task, today) ? 'overdue' : isDueToday(task, today) ? 'today' : 'default'
-  const tags = task.tagIds.map((id) => tagsById[id]).filter((t) => t !== undefined)
+  const tags = useTaskTags(task.tagIds)
 
   const copyMarkdown = async (): Promise<void> => {
     void flush()
@@ -261,7 +262,11 @@ function PanelBody({ task }: { task: Task }) {
 
   return (
     <>
-      <header className="app-drag flex h-12 shrink-0 items-center gap-1 border-b px-3">
+      {/* Same height as the toolbar beside it (one or two rows), so the bottom borders line up. */}
+      <header
+        className="app-drag flex h-[var(--toolbar-height,3rem)] shrink-0 items-center gap-1 border-b px-3"
+        data-testid="detail-header"
+      >
         <Button
           variant="ghost"
           size="sm"
@@ -283,7 +288,7 @@ function PanelBody({ task }: { task: Task }) {
           {isDone ? 'Completed' : 'Mark complete'}
         </Button>
         <div className="flex-1" />
-        <IconAction label="Close" shortcut="Esc" onClick={close}>
+        <IconAction label="Close" shortcut="Escape" onClick={close}>
           <X />
         </IconAction>
       </header>
@@ -592,7 +597,7 @@ function IconAction({
       </TooltipTrigger>
       <TooltipContent side="bottom" className="px-2 py-1">
         {label}
-        {shortcut && <span className="ml-1.5 opacity-60">{shortcut}</span>}
+        {shortcut && <span className="ml-1.5 opacity-60">{formatShortcut(shortcut)}</span>}
       </TooltipContent>
     </Tooltip>
   )

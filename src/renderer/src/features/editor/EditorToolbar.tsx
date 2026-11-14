@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { shortcutLabel } from './shortcutLabel'
+import { formatEditorShortcut } from '@/lib/shortcuts'
 
 interface ToolButtonProps {
   label: string
@@ -79,7 +79,7 @@ function ToolButton({
       </TooltipTrigger>
       <TooltipContent side="bottom" sideOffset={4} className="px-2 py-1">
         {label}
-        {shortcut && <span className="ml-1.5 opacity-60">{shortcutLabel(shortcut)}</span>}
+        {shortcut && <span className="ml-1.5 opacity-60">{formatEditorShortcut(shortcut)}</span>}
       </TooltipContent>
     </Tooltip>
   )
@@ -340,7 +340,7 @@ function OverflowMenu({ items, editor }: { items: OverflowItem[]; editor: Editor
           >
             {i.icon}
             {i.label}
-            <DropdownMenuShortcut>{shortcutLabel(i.shortcut)}</DropdownMenuShortcut>
+            <DropdownMenuShortcut>{formatEditorShortcut(i.shortcut)}</DropdownMenuShortcut>
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

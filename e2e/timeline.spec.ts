@@ -118,6 +118,61 @@ test('a pre-range stub follows the visible edge and drags into range', async () 
   await expect(b).not.toHaveAttribute('data-clamped', /.+/)
 })
 
+test('a long bar keeps its label in view when its start is scrolled off (every zoom)', async () => {
+  const { page } = await setup()
+  const long = await page.evaluate(
+    ([start, due]) =>
+      (globalThis as unknown as WithApi).api.tasks.create({
+        title: 'Quarter-long migration',
+        startDate: start,
+        dueDate: due,
+      }),
+    [localDate(-3), localDate(200)] as const,
+  )
+  const scroller = page
+    .getByTestId('timeline-left-pane')
+    .locator('xpath=ancestor::div[contains(@class,"overflow-auto")][1]')
+  const pane = await page.getByTestId('timeline-left-pane').boundingBox()
+  if (!pane) throw new Error('no left pane')
+  const visibleLeft = pane.x + pane.width
+  const label = bar(page, long.id).getByTestId('timeline-bar-label')
+  for (const zoom of ['day', 'week', 'month'] as const) {
+    await page.locator(`[data-zoom="${zoom}"]`).click()
+    await expect(page.getByTestId('timeline-view')).toHaveAttribute('data-current-zoom', zoom)
+    const b = await bar(page, long.id).boundingBox()
+    if (!b) throw new Error('bar not rendered')
+    // Scroll so the bar starts well left of the visible grid but still covers it.
+    const target = b.x - visibleLeft + (await scroller.evaluate((el) => el.scrollLeft)) + 150
+    await scroller.evaluate((el, left) => (el.scrollLeft = left), target)
+    await expect
+      .poll(async () => (await bar(page, long.id).boundingBox())?.x ?? 0)
+      .toBeLessThan(visibleLeft - 100)
+    const l = await label.boundingBox()
+    if (!l) throw new Error('label not rendered')
+    expect(Math.abs(l.x - visibleLeft)).toBeLessThan(2)
+    await expect(label).toHaveText('Quarter-long migration')
+  }
+  // The resize handle and drag body still answer where they were.
+  const b = await bar(page, long.id).boundingBox()
+  if (!b) throw new Error('bar not rendered')
+  const endHandle = bar(page, long.id).locator('[data-handle="end"]')
+  await expect(endHandle).toHaveCount(1)
+  const atLabel = await page.evaluate(
+    ([x, y]) => {
+      const d = (
+        globalThis as unknown as {
+          document: {
+            elementFromPoint(x: number, y: number): { closest(s: string): unknown } | null
+          }
+        }
+      ).document
+      return d.elementFromPoint(x, y)?.closest('[data-testid="timeline-bar"]') !== null
+    },
+    [visibleLeft + 20, b.y + b.height / 2] as const,
+  )
+  expect(atLabel).toBe(true)
+})
+
 test('switches zoom levels', async () => {
   const { page } = await setup()
   const view = page.getByTestId('timeline-view')

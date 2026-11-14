@@ -14,12 +14,14 @@ import {
 import { toast } from 'sonner'
 import { MAX_TITLE_LENGTH, STATUS_LABELS } from '@shared/constants'
 import { parseQuickAdd } from '@shared/quickAddParser'
+import { compareTagsByName } from '@shared/views'
 import type { LocalDate, Priority } from '@shared/types'
 import { DatePickerField, PrioritySelect, TagChip, TagPicker } from '@/components/task'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { api } from '@/lib/api'
-import { isMac, isModKey } from '@/lib/platform'
+import { isModKey } from '@/lib/platform'
+import { formatShortcut } from '@/lib/shortcuts'
 import { useToday } from '@/lib/useToday'
 import { cn } from '@/lib/utils'
 import { useSettings, useTagsById } from '@/stores/selectors'
@@ -70,7 +72,6 @@ export function QuickAddForm({
   const today = useToday()
   const { weekStartsOn } = useSettings()
   const tagsById = useTagsById()
-  const mac = isMac()
   const isWindow = variant === 'window'
 
   const parsed = useMemo(
@@ -182,14 +183,32 @@ export function QuickAddForm({
     .filter((t) => t !== undefined)
     .filter((t) => !resolved.tokenTags.some((tt) => tt.tag?.id === t.id))
 
+  // Token tags and picked tags share one row, in the app-wide tag order.
+  const chips = [
+    ...resolved.tokenTags.map(({ name, tag }) => ({
+      key: `token:${name.toLowerCase()}`,
+      id: tag?.id,
+      name,
+      color: tag?.color ?? 'slate',
+      isNew: !tag,
+      onRemove: () => update({ text: removeTagToken(draft.text, parsed, name) }),
+    })),
+    ...pickedOnly.map((t) => ({
+      key: t.id,
+      id: t.id,
+      name: t.name,
+      color: t.color,
+      isNew: false,
+      onRemove: () => update({ pickedTagIds: draft.pickedTagIds.filter((id) => id !== t.id) }),
+    })),
+  ].sort(compareTagsByName)
+
   const dueTone =
     resolved.dueDate && resolved.dueDate < today
       ? 'overdue'
       : resolved.dueDate === today
         ? 'today'
         : 'default'
-  const enterLabel = mac ? '↩\uFE0E' : 'Enter'
-  const modEnter = mac ? '⌘↩\uFE0E' : 'Ctrl+Enter'
 
   return (
     <div className="flex flex-col" onKeyDown={onRootKeyDown} data-testid="quick-add-form">
@@ -262,28 +281,21 @@ export function QuickAddForm({
             />
           )}
           <TagPicker value={draft.pickedTagIds} onChange={(ids) => update({ pickedTagIds: ids })} />
-          {(resolved.tokenTags.length > 0 || pickedOnly.length > 0) && (
+          {chips.length > 0 && (
             <div
               className="flex min-w-0 flex-wrap items-center gap-1 pl-0.5"
               data-testid="quick-add-tags"
             >
-              {resolved.tokenTags.map(({ name, tag }) => (
-                <span key={name.toLowerCase()} title={tag ? undefined : 'New tag, created on save'}>
+              {chips.map((c) => (
+                <span key={c.key} title={c.isNew ? 'New tag, created on save' : undefined}>
                   <TagChip
-                    tag={{ name, color: tag?.color ?? 'slate' }}
-                    className={cn(!tag && 'outline-1 outline-muted-foreground/40 outline-dashed')}
-                    onRemove={() => update({ text: removeTagToken(draft.text, parsed, name) })}
+                    tag={{ name: c.name, color: c.color }}
+                    className={cn(
+                      c.isNew && 'outline-1 outline-muted-foreground/40 outline-dashed',
+                    )}
+                    onRemove={c.onRemove}
                   />
                 </span>
-              ))}
-              {pickedOnly.map((t) => (
-                <TagChip
-                  key={t.id}
-                  tag={t}
-                  onRemove={() =>
-                    update({ pickedTagIds: draft.pickedTagIds.filter((id) => id !== t.id) })
-                  }
-                />
               ))}
             </div>
           )}
@@ -326,24 +338,24 @@ export function QuickAddForm({
         </span>
         <span className="flex-1" />
         <span className="flex items-center gap-1">
-          <Kbd>{enterLabel}</Kbd> save
+          <Kbd>{formatShortcut('Return')}</Kbd> save
         </span>
         {isWindow ? (
           <>
             <span className="flex items-center gap-1">
-              <Kbd>Tab</Kbd> notes
+              <Kbd>{formatShortcut('Tab')}</Kbd> notes
             </span>
             <span className="flex items-center gap-1">
-              <Kbd>Esc</Kbd> close
+              <Kbd>{formatShortcut('Escape')}</Kbd> close
             </span>
           </>
         ) : (
           <>
             <span className="flex items-center gap-1">
-              <Kbd>{modEnter}</Kbd> save from notes
+              <Kbd>{formatShortcut('Mod+Return')}</Kbd> save from notes
             </span>
             <span className="flex items-center gap-1">
-              <Kbd>{mac ? '⌘⇧↩\uFE0E' : 'Ctrl+Shift+Enter'}</Kbd> save &amp; new
+              <Kbd>{formatShortcut('Mod+Shift+Return')}</Kbd> save &amp; new
             </span>
           </>
         )}

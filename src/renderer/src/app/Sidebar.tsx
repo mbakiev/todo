@@ -5,7 +5,8 @@ import type { ViewId } from '@shared/types'
 import { filterTodayBoard, filterWeekBoard, isOpen } from '@shared/views'
 import { TAG_DOT_CLASS } from '@/components/task'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { isMac, modKeyLabel } from '@/lib/platform'
+import { isMac } from '@/lib/platform'
+import { formatShortcut } from '@/lib/shortcuts'
 import { useToday } from '@/lib/useToday'
 import { cn } from '@/lib/utils'
 import { useSettings, useTags, useTasks } from '@/stores/selectors'
@@ -82,10 +83,7 @@ export function Sidebar() {
                       )}
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent side="right">
-                    {modKeyLabel()}
-                    {i + 1}
-                  </TooltipContent>
+                  <TooltipContent side="right">{formatShortcut(`Mod+${i + 1}`)}</TooltipContent>
                 </Tooltip>
               </li>
             )
@@ -140,7 +138,7 @@ export function Sidebar() {
         >
           <SettingsIcon className="size-4 text-muted-foreground" />
           <span className="flex-1 text-left">Settings</span>
-          <span className="text-[11px] text-muted-foreground">{modKeyLabel()},</span>
+          <span className="text-[11px] text-muted-foreground">{formatShortcut('Mod+,')}</span>
         </button>
       </div>
     </nav>

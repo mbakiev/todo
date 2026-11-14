@@ -6,7 +6,7 @@ import { AlignLeft, ListChecks } from 'lucide-react'
 import { memo, type KeyboardEvent } from 'react'
 import type { Task } from '@shared/types'
 import { checklistProgress, hasDescription } from '@shared/views'
-import { DueDateBadge, PriorityIcon, TaskContextMenu, TaskTags } from '@/components/task'
+import { PriorityIcon, TaskContextMenu, TaskDateBadge, TaskTags } from '@/components/task'
 import { cn } from '@/lib/utils'
 import { isTempId } from '@/stores/tasksStore'
 import { useUiStore } from '@/stores/uiStore'
@@ -45,33 +45,37 @@ export function CardBody({ task, selected = false, overlay = false }: CardBodyPr
           {task.title}
         </span>
       </span>
-      {(task.dueDate || task.startDate || described || progress || task.tagIds.length > 0) && (
-        <span
-          className={cn('flex flex-wrap items-center gap-x-2 gap-y-1 pl-5', done && 'opacity-60')}
-        >
-          <DueDateBadge dueDate={task.dueDate} status={task.status} />
-          {progress && (
-            <span
-              className={cn(
-                'inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground tabular-nums',
-                progress.done === progress.total && 'text-status-done',
-              )}
-              title={`${progress.done} of ${progress.total} checklist items done`}
-            >
-              <ListChecks className="size-3" />
-              {progress.done}/{progress.total}
-            </span>
-          )}
-          {described && !progress && (
-            <AlignLeft
-              className="size-3 text-muted-foreground"
-              aria-label="Has description"
-              role="img"
-            />
-          )}
-          <TaskTags tagIds={task.tagIds} />
-        </span>
-      )}
+      {/* Meta row; `empty:hidden` drops it (and its gap) when nothing in it renders, e.g. a
+          task whose only tags no longer exist. */}
+      <span
+        data-testid="card-meta"
+        className={cn(
+          'flex flex-wrap items-center gap-x-2 gap-y-1 pl-5 empty:hidden',
+          done && 'opacity-60',
+        )}
+      >
+        <TaskDateBadge task={task} />
+        {progress && (
+          <span
+            className={cn(
+              'inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground tabular-nums',
+              progress.done === progress.total && 'text-status-done',
+            )}
+            title={`${progress.done} of ${progress.total} checklist items done`}
+          >
+            <ListChecks className="size-3" />
+            {progress.done}/{progress.total}
+          </span>
+        )}
+        {described && !progress && (
+          <AlignLeft
+            className="size-3 text-muted-foreground"
+            aria-label="Has description"
+            role="img"
+          />
+        )}
+        <TaskTags tagIds={task.tagIds} />
+      </span>
     </div>
   )
 }

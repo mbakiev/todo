@@ -1,5 +1,5 @@
 import { Check, ListFilter, Plus, Search, Tag as TagIcon, X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { PRIORITIES, PRIORITY_LABELS, VIEW_LABELS } from '@shared/constants'
 import { PriorityIcon, TAG_DOT_CLASS } from '@/components/task'
 import { Button } from '@/components/ui/button'
@@ -20,7 +20,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { modKeyLabel } from '@/lib/platform'
+import { formatShortcut } from '@/lib/shortcuts'
 import { cn } from '@/lib/utils'
 import { useIsFilterActive, useTags } from '@/stores/selectors'
 import { useUiStore } from '@/stores/uiStore'
@@ -64,7 +64,7 @@ function SearchBox() {
           </Button>
         </TooltipTrigger>
         <TooltipContent>
-          {text ? `Search: ${text}` : 'Search'} · {modKeyLabel()}F
+          {text ? `Search: ${text}` : 'Search'} · {formatShortcut('Mod+F')}
         </TooltipContent>
       </Tooltip>
       <div
@@ -81,7 +81,7 @@ function SearchBox() {
           ref={ref}
           type="search"
           aria-label="Search tasks"
-          placeholder={`Search  ${modKeyLabel()}F`}
+          placeholder={`Search  ${formatShortcut('Mod+F')}`}
           value={text}
           onChange={(e) => setSearchText(e.target.value)}
           onBlur={() => setCollapsedAt(useUiStore.getState().searchFocusRequest)}
@@ -192,9 +192,26 @@ export function Toolbar({ slotRef }: ToolbarProps) {
   const openNewTaskDialog = useUiStore((s) => s.openNewTaskDialog)
   const clearFilter = useUiStore((s) => s.clearFilter)
   const filterActive = useIsFilterActive()
+  const headerRef = useRef<HTMLElement>(null)
+
+  // Publishes the toolbar's height (it wraps to two rows when narrow) as --toolbar-height, so
+  // the detail panel's header next to it keeps the same height and their borders line up.
+  useLayoutEffect(() => {
+    const el = headerRef.current
+    if (!el) return
+    const root = document.documentElement
+    const publish = (): void => root.style.setProperty('--toolbar-height', `${el.offsetHeight}px`)
+    publish()
+    const ro = new ResizeObserver(publish)
+    ro.observe(el)
+    return () => {
+      ro.disconnect()
+      root.style.removeProperty('--toolbar-height')
+    }
+  }, [])
 
   return (
-    <header className="@container/toolbar relative shrink-0 border-b">
+    <header ref={headerRef} className="@container/toolbar relative shrink-0 border-b">
       <div className="app-drag flex min-h-12 items-center gap-x-2 gap-y-1.5 px-4 py-2.5 @max-[520px]/toolbar:flex-wrap @max-[520px]/toolbar:px-3">
         <h1 className="mr-2 shrink-0 text-sm font-semibold whitespace-nowrap @max-[700px]/toolbar:sr-only @max-[520px]/toolbar:not-sr-only">
           {VIEW_LABELS[activeView]}
@@ -237,7 +254,7 @@ export function Toolbar({ slotRef }: ToolbarProps) {
               <span className="@max-[960px]/toolbar:sr-only">New task</span>
             </Button>
           </TooltipTrigger>
-          <TooltipContent>New task · {modKeyLabel()}N</TooltipContent>
+          <TooltipContent>New task · {formatShortcut('Mod+N')}</TooltipContent>
         </Tooltip>
       </div>
     </header>

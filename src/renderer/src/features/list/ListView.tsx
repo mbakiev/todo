@@ -38,7 +38,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { modKeyLabel } from '@/lib/platform'
+import { formatShortcut } from '@/lib/shortcuts'
 import { useToday } from '@/lib/useToday'
 import { cn } from '@/lib/utils'
 import { useFilteredTasks, useTagsById, useTasks } from '@/stores/selectors'
@@ -539,7 +539,7 @@ export function ListView() {
         {empty && (
           <p className="px-6 py-8 text-[13px] text-muted-foreground" data-testid="list-empty">
             {allTasks.length === 0
-              ? `No tasks yet. Press ${modKeyLabel()}N to add one.`
+              ? `No tasks yet. Press ${formatShortcut('Mod+N')} to add one.`
               : 'No tasks match the current filters.'}
           </p>
         )}

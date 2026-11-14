@@ -5,6 +5,8 @@ import {
   boardColumns,
   buildBoardColumns,
   checklistProgress,
+  compareTagsByName,
+  dateBadge,
   filterCalendar,
   filterTimeline,
   filterTodayBoard,
@@ -15,6 +17,7 @@ import {
   isOverdue,
   sortTasks,
   taskSpan,
+  tagsInDisplayOrder,
   tasksInRange,
   timelineRange,
 } from './views'
@@ -267,5 +270,47 @@ describe('checklistProgress', () => {
     expect(
       checklistProgress('- [ ] a\n- [x] b\n  * [X] nested\n1. [ ] numbered\n- not a task'),
     ).toEqual({ done: 2, total: 4 })
+  })
+})
+
+describe('tag display order', () => {
+  const tag = (id: string, name: string) => ({ id, name })
+  const byId = {
+    z1: tag('z1', 'zeta'),
+    a1: tag('a1', 'Alpha'),
+    b1: tag('b1', 'beta'),
+    b0: tag('b0', 'Beta'),
+  }
+  it('is alphabetical, case-insensitive, whatever order the ids come in', () => {
+    const names = (ids: string[]) => tagsInDisplayOrder(ids, byId).map((t) => t.id)
+    expect(names(['z1', 'b1', 'a1'])).toEqual(['a1', 'b1', 'z1'])
+    expect(names(['a1', 'z1', 'b1'])).toEqual(['a1', 'b1', 'z1'])
+    // Same name in another case: ties broken by id, so the order is stable between runs.
+    expect(names(['b1', 'b0'])).toEqual(['b0', 'b1'])
+    expect(names(['b0', 'b1'])).toEqual(['b0', 'b1'])
+  })
+  it('skips unknown ids', () => {
+    expect(tagsInDisplayOrder(['gone', 'a1'], byId).map((t) => t.id)).toEqual(['a1'])
+  })
+  it('sorts plain names too (quick-add chips)', () => {
+    expect(['Work', 'home', 'Errands'].map((name) => ({ name })).sort(compareTagsByName)).toEqual([
+      { name: 'Errands' },
+      { name: 'home' },
+      { name: 'Work' },
+    ])
+  })
+})
+
+describe('dateBadge', () => {
+  it('prefers the due date; a start-only task shows its start', () => {
+    expect(dateBadge({ startDate: '2026-11-10', dueDate: '2026-11-20' })).toEqual({
+      kind: 'due',
+      date: '2026-11-20',
+    })
+    expect(dateBadge({ startDate: '2026-11-10', dueDate: null })).toEqual({
+      kind: 'start',
+      date: '2026-11-10',
+    })
+    expect(dateBadge({ startDate: null, dueDate: null })).toBeNull()
   })
 })

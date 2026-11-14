@@ -1,10 +1,11 @@
 // Records a global shortcut: click, press the combo. Shows platform symbols (⌥⇧T on macOS,
-// Alt+Shift+T on Windows), requires a non-Shift modifier, Esc cancels. While recording,
+// Alt+Shift+T on Windows, via lib/shortcuts), requires a non-Shift modifier, Esc cancels. While recording,
 // the app's own global shortcuts are suspended so the current combo can be re-recorded.
 import { useEffect, useRef, useState } from 'react'
-import { acceleratorParts, recordFromKeyEvent, type Modifier } from '@shared/accelerators'
+import { recordFromKeyEvent, type Modifier } from '@shared/accelerators'
 import { api } from '@/lib/api'
 import { appInfo, isMac } from '@/lib/platform'
+import { formatModifier, shortcutParts } from '@/lib/shortcuts'
 import { cn } from '@/lib/utils'
 import { KeyCombo } from './parts'
 
@@ -15,21 +16,6 @@ export interface ShortcutRecorderProps {
   validate?(accelerator: string): string | null
   label: string
   invalid?: boolean
-}
-
-const MAC_MODS: Record<Modifier, string> = {
-  Control: '⌃',
-  Alt: '⌥',
-  Shift: '⇧',
-  Command: '⌘',
-  Super: '⌘',
-}
-const WIN_MODS: Record<Modifier, string> = {
-  Control: 'Ctrl',
-  Alt: 'Alt',
-  Shift: 'Shift',
-  Command: 'Win',
-  Super: 'Win',
 }
 
 export function ShortcutRecorder({
@@ -74,7 +60,7 @@ export function ShortcutRecorder({
         setHint(
           r.reason === 'needs-modifier'
             ? mac
-              ? 'Include ⌘, ⌃ or ⌥ in the shortcut'
+              ? 'Include ⌃, ⌥ or ⌘ in the shortcut'
               : 'Include Ctrl, Alt or Win in the shortcut'
             : 'That key cannot be used in a shortcut',
         )
@@ -106,8 +92,8 @@ export function ShortcutRecorder({
     }
   }, [recording, platform, mac])
 
-  const parts = acceleratorParts(value, platform)
-  const heldLabel = held.map((m) => (mac ? MAC_MODS[m] : WIN_MODS[m]))
+  const parts = shortcutParts(value)
+  const heldLabel = held.map(formatModifier)
 
   return (
     <div className="flex flex-col items-end gap-1">

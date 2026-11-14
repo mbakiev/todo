@@ -11,7 +11,13 @@ export { TagChip, type TagChipProps } from './TagChip'
 export { TagPicker, type TagPickerProps } from './TagPicker'
 export { TAG_CHIP_CLASS, TAG_DOT_CLASS } from './tagColors'
 export { TaskTags, type TaskTagsProps } from './TaskTags'
-export { DueDateBadge, type DueDateBadgeProps } from './DueDateBadge'
+export {
+  DueDateBadge,
+  StartDateBadge,
+  TaskDateBadge,
+  type DueDateBadgeProps,
+  type StartDateBadgeProps,
+} from './DueDateBadge'
 export { DatePickerField, type DatePickerFieldProps } from './DatePickerField'
 export { TaskContextMenu, type TaskContextMenuProps } from './TaskContextMenu'
 export { deleteTaskWithUndo } from './deleteTaskWithUndo'
