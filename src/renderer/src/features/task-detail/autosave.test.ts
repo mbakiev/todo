@@ -171,6 +171,28 @@ describe('useDraftField', () => {
       expect(useTasksStore.getState().byId.a?.description).toBe('typed text')
     })
 
+    it('reports a retry that is still in flight as saving (not dirty, but not settled)', async () => {
+      let reject: (e: Error) => void = () => {}
+      const update = vi.fn(
+        (): Promise<Task> =>
+          new Promise((_resolve, rej) => {
+            reject = rej
+          }),
+      )
+      installMockApi({ tasks: { update } })
+      const hook = setupWithStore()
+      act(() => hook.result.current.change('typed text'))
+      await act(async () => {
+        vi.advanceTimersByTime(500)
+      })
+      expect(update).toHaveBeenCalledTimes(1)
+      expect(hook.result.current.dirty).toBe(false)
+      expect(hook.result.current.saving).toBe(true)
+      await act(async () => reject(new Error('disk full')))
+      expect(hook.result.current.saving).toBe(false)
+      expect(hook.result.current.dirty).toBe(true)
+    })
+
     it('the next edit retries too, with the newest text', async () => {
       const update = vi.fn((): Promise<Task> => Promise.reject(new Error('nope')))
       installMockApi({ tasks: { update } })

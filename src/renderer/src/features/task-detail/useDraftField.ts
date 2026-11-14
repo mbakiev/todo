@@ -58,6 +58,8 @@ export interface DraftField {
   /** Recovered text: drop it and show the saved value. */
   discardRecovered(): void
   readonly dirty: boolean
+  /** A save is in flight (it may still fail and make the draft dirty again). */
+  readonly saving: boolean
   readonly status: DraftStatus
 }
 
@@ -132,6 +134,14 @@ export class DraftController {
   /** True while the draft holds text the store does not (pending, failed or invalid). */
   get dirty(): boolean {
     return this.autosave.dirty || this.failedValue !== null || this.invalid || this.recovered
+  }
+
+  /**
+   * True while a save is in flight. The store already shows the text then, so the draft is
+   * not `dirty` — but the save can still fail and hand the text back.
+   */
+  get saving(): boolean {
+    return this.inflight > 0
   }
 
   private persist(value: string): void {
@@ -303,6 +313,9 @@ export function useDraftField({
     },
     get dirty() {
       return ctl.dirty
+    },
+    get saving() {
+      return ctl.saving
     },
   }
 }

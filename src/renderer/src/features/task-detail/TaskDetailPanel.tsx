@@ -202,7 +202,9 @@ function PanelBody({ task }: { task: Task }) {
     () =>
       setLeaveGuard(() => {
         const f = fieldsRef.current
-        return f.title.dirty || f.description.dirty ? leaveRef.current() : null
+        // An in-flight save counts too: if it fails, its text must not leave with the panel.
+        const unsettled = (d: typeof f.title): boolean => d.dirty || d.saving
+        return unsettled(f.title) || unsettled(f.description) ? leaveRef.current() : null
       }),
     [],
   )
