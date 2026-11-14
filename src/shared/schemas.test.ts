@@ -1,0 +1,83 @@
+import { DEFAULT_SETTINGS } from './constants'
+import {
+  exportFileSchema,
+  settingsPatchSchema,
+  settingsSchema,
+  tagCreateInputSchema,
+  taskCreateInputSchema,
+  taskMoveInputSchema,
+  taskUpdatePatchSchema,
+} from './schemas'
+
+describe('schemas', () => {
+  it('task create: trims title, rejects empty/unknown keys/bad dates', () => {
+    expect(taskCreateInputSchema.parse({ title: '  Hi ' }).title).toBe('Hi')
+    expect(taskCreateInputSchema.safeParse({ title: '   ' }).success).toBe(false)
+    expect(taskCreateInputSchema.safeParse({ title: 'x', bogus: 1 }).success).toBe(false)
+    expect(taskCreateInputSchema.safeParse({ title: 'x', dueDate: '2026-02-30' }).success).toBe(
+      false,
+    )
+    expect(taskCreateInputSchema.safeParse({ title: 'x', priority: 5 }).success).toBe(false)
+    expect(taskCreateInputSchema.safeParse({ title: 'x', status: 'archived' }).success).toBe(false)
+    expect(
+      taskCreateInputSchema.safeParse({
+        title: 'x',
+        startDate: '2026-11-20',
+        dueDate: '2026-11-19',
+      }).success,
+    ).toBe(false)
+    expect(
+      taskCreateInputSchema.safeParse({
+        title: 'x',
+        startDate: '2026-11-19',
+        dueDate: '2026-11-19',
+      }).success,
+    ).toBe(true)
+  })
+  it('task update: partial, nullable dates', () => {
+    expect(taskUpdatePatchSchema.parse({ dueDate: null })).toEqual({ dueDate: null })
+    expect(taskUpdatePatchSchema.safeParse({ id: 'x' }).success).toBe(false)
+    expect(taskUpdatePatchSchema.safeParse({ position: Number.NaN }).success).toBe(false)
+  })
+  it('task move', () => {
+    expect(taskMoveInputSchema.safeParse({ beforeId: null, afterId: 'a' }).success).toBe(true)
+    expect(taskMoveInputSchema.safeParse({ afterId: 'a' }).success).toBe(false)
+  })
+  it('tag create', () => {
+    expect(tagCreateInputSchema.parse({ name: ' ops ' }).name).toBe('ops')
+    expect(tagCreateInputSchema.safeParse({ name: 'x', color: 'pink' }).success).toBe(false)
+  })
+  it('settings: defaults are valid, patch is partial', () => {
+    expect(settingsSchema.parse(DEFAULT_SETTINGS)).toEqual(DEFAULT_SETTINGS)
+    expect(settingsPatchSchema.parse({ boardSort: { week: 'due' } })).toEqual({
+      boardSort: { week: 'due' },
+    })
+    expect(settingsPatchSchema.safeParse({ weekStartsOn: 3 }).success).toBe(false)
+  })
+  it('export file', () => {
+    const file = {
+      app: 'martin-todos',
+      formatVersion: 1,
+      exportedAt: 1,
+      tags: [{ id: 'g', name: 'ops', color: 'blue', createdAt: 1 }],
+      tasks: [
+        {
+          id: 't',
+          title: 'x',
+          description: '',
+          status: 'done',
+          priority: 2,
+          startDate: null,
+          dueDate: '2026-11-13',
+          position: 0,
+          tagIds: ['g'],
+          createdAt: 1,
+          updatedAt: 1,
+          completedAt: 2,
+        },
+      ],
+    }
+    expect(exportFileSchema.safeParse(file).success).toBe(true)
+    expect(exportFileSchema.safeParse({ ...file, formatVersion: 2 }).success).toBe(false)
+  })
+})
