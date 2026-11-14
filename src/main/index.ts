@@ -4,20 +4,21 @@
 // tray (and the Dock on macOS). A real quit comes from tray Quit, the app menu / Cmd+Q, or
 // OS shutdown / logout; `before-quit` (and the Windows session-end events in
 // mainWindow.ts) set `ctx.quitting` so windows are then allowed to close.
-import { app, nativeTheme, powerMonitor, session, type BrowserWindow } from 'electron'
+import { app, dialog, nativeTheme, powerMonitor, session, type BrowserWindow } from 'electron'
 import { z } from 'zod'
+import { APP_DISPLAY_NAME } from '@shared/constants'
 import { IPC } from '@shared/ipc'
 import { taskCreateInputSchema } from '@shared/schemas'
 import type { DataChange, Settings, ShortcutStatus } from '@shared/types'
 import { broadcast } from './broadcast'
 import type { AppContext } from './context'
-import { openDatabase } from './db'
 import { seedDemoData } from './db/seed'
 import { registerIpcHandlers } from './ipc'
 import { installAppMenu } from './menu'
 import { configureUserDataDir, getAppPaths, isDev, isTestRun } from './paths'
 import { applyLaunchAtLogin, wasLaunchedAtLogin } from './services/autoLaunch'
 import { startAutomaticBackups } from './services/backup'
+import { openDatabaseWithRecovery } from './startup'
 import { installTestHook, registerGlobalShortcuts, unregisterGlobalShortcuts } from './shortcuts'
 import { createTray, destroyTray } from './tray'
 import { createMainWindow, getMainWindow, showMainWindow } from './windows/mainWindow'
@@ -33,7 +34,13 @@ if (process.platform === 'win32') app.setAppUserModelId('com.martin.todos')
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
-  void bootstrap()
+  bootstrap().catch((err: unknown) => {
+    // Never linger as an invisible process holding the single-instance lock.
+    console.error('Startup failed', err)
+    const message = err instanceof Error ? err.message : String(err)
+    if (app.isReady()) dialog.showErrorBox(`${APP_DISPLAY_NAME} couldn't start`, message)
+    app.exit(1)
+  })
 }
 
 function seedFlag(): 'seed' | 'reset' | null {
@@ -49,7 +56,13 @@ async function bootstrap(): Promise<void> {
   session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false))
 
   const paths = getAppPaths()
-  const repos = openDatabase({ path: paths.dbFile })
+  // A database that cannot be opened (damaged, locked, from a newer version) or that is
+  // missing while backups exist is explained in a dialog; see startup.ts.
+  const repos = await openDatabaseWithRecovery(paths)
+  if (!repos) {
+    app.quit()
+    return
+  }
 
   const seed = seedFlag()
   if (seed && isDev) {

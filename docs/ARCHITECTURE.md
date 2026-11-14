@@ -380,13 +380,41 @@ bounds; main process only).
 Stored in the `settings` table; defaults in `shared/constants.ts`.
 
 ### Backup, export, import
-- **Automatic backups**: at startup and every 24 h, snapshot the DB to
-  `<userData>/backups/todos-YYYYMMDD-HHmmss.db`; keep the newest 14.
+- **Backups** (`<userData>/backups/`, VACUUM INTO snapshots). Retention is per kind, encoded
+  in the file name (pre-existing `todos-YYYYMMDD-HHmmss.db` files are automatic backups):
+
+  | Kind | File | Kept |
+  |---|---|---|
+  | Automatic: at startup (skipped if one is < 1 h old) and every 24 h | `todos-YYYYMMDD-HHmmss.db` | newest 14 |
+  | Manual: "Back up now" | `todos-manual-YYYYMMDD-HHmmss.db` | newest 10 |
+  | Safety copy before **Replace all** import | `todos-preimport-YYYYMMDD-HHmmss.db` | newest 5 |
+
+  No automatic snapshot is taken while the database has zero tasks (soft-deleted included),
+  so an accidental wipe cannot rotate out good history. Deleting an old backup is
+  best-effort (a file locked by another program is logged and retried at the next
+  rotation). "Last backup" in Settings counts every kind.
 - **Export**: one JSON file `{ app: 'martin-todos', formatVersion: 1, exportedAt, tasks, tags }`
   via a save dialog.
 - **Import**: open dialog → zod-validate → **Merge** (upsert by id; the record with the
-  newer `updatedAt` wins; tags matched by id then by name) or **Replace all** (takes an
-  automatic backup first). Runs in one transaction; returns counts.
+  newer `updatedAt` wins; tags: all id matches first, then name matches only against local
+  tags no id match claimed, then the rest are created) or **Replace all** (takes a
+  pre-import backup first). Runs in one transaction; returns counts. A leading UTF-8 BOM
+  is accepted.
+
+### Startup problems
+Opening the database runs through `main/startup.ts` (decisions and file operations in the
+unit-tested `services/startupRecovery.ts`). The process never lingers without a window:
+- **Cannot open / migrate** the DB → native dialog with a cause-specific message: created by
+  a **newer version** (no restore offered — it would drop the newer data), **damaged /
+  unreadable**, or **locked** by another program. Buttons: **Reveal data folder**,
+  **Restore latest backup** (only when a backup exists and the cause is not "newer version"),
+  **Quit**. Restore moves the bad file aside as `todos.db.broken-<YYYYMMDD-HHmmss>` (plus
+  `-wal` / `-shm` if present; nothing is ever deleted), copies the newest backup of any kind
+  into place and continues startup (a backup that also fails is skipped next time). Anything
+  but a successful restore quits.
+- **DB file missing but backups exist** → **Restore latest backup** / **Start fresh** /
+  **Quit**, instead of silently creating an empty database.
+- Any other startup exception shows an error box and exits.
 
 ### Environment variables
 | Variable | Effect |

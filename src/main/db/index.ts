@@ -36,3 +36,4 @@ export function openDatabase({ path, now = Date.now }: OpenDatabaseOptions): Rep
 
 export type { Db } from './connection'
 export { RepoError } from './errors'
+export { SchemaTooNewError } from './migrate'

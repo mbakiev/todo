@@ -1,3 +1,5 @@
+import type * as fsModule from 'node:fs'
+import type { RmOptions } from 'node:fs'
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -17,10 +19,10 @@ import {
 // rmSync passes through unless a test makes it throw for a path (Windows file locks).
 const rm = vi.hoisted(() => ({ lockedPaths: new Set<string>() }))
 vi.mock('node:fs', async (importOriginal) => {
-  const real = await importOriginal<typeof import('node:fs')>()
+  const real = await importOriginal<typeof fsModule>()
   return {
     ...real,
-    rmSync: vi.fn((path: string, opts?: import('node:fs').RmOptions) => {
+    rmSync: vi.fn((path: string, opts?: RmOptions) => {
       if (rm.lockedPaths.has(path)) {
         throw Object.assign(new Error(`EBUSY: resource busy or locked, unlink '${path}'`), {
           code: 'EBUSY',
