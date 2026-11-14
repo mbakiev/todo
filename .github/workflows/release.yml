@@ -56,6 +56,12 @@ jobs:
           pattern: installers-*
           path: dist
           merge-multiple: true
+      # upload-artifact keeps the path below the first wildcard (release/*/…), so the files
+      # arrive as dist/<version>/…; the release wants them side by side.
+      - name: Flatten the downloaded files
+        run: |
+          find dist -mindepth 2 -type f -exec mv -- {} dist/ \;
+          find dist -mindepth 1 -type d -empty -delete
       - name: Check every installer is present
         env:
           TAG: ${{ github.ref_name }}
