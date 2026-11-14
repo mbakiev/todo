@@ -182,6 +182,32 @@ test('a drop in the gutter between columns lands in the nearest column (and slot
     .toEqual([inProgress[0], moving, ...inProgress.slice(1)])
 })
 
+test("the first card's selection ring is not clipped by the column's scroll area", async () => {
+  launched = await launchApp({ seed: true })
+  const { page } = launched
+  await setSize(launched)
+  await ready(page)
+
+  // The ring is a 2px box-shadow outside the card; the scroll container clips at its
+  // padding edge, so the first card must sit at least that far below the container's top.
+  const RING = 2
+  for (const status of ['not_started', 'in_progress', 'blocked', 'done']) {
+    const first = cards(page, status).first()
+    if ((await first.count()) === 0) continue
+    const gap = await first.evaluate((el) => {
+      const scroller = el.closest('[data-testid^="column-"]')
+      if (!scroller) throw new Error('card is not inside a column scroll area')
+      return el.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+    })
+    expect(gap, `headroom above the first ${status} card`).toBeGreaterThanOrEqual(RING)
+  }
+
+  await cards(page, 'not_started').first().click()
+  await page.waitForTimeout(200)
+  mkdirSync(OUT, { recursive: true })
+  await column(page, 'not_started').screenshot({ path: join(OUT, 'board-first-card-ring.png') })
+})
+
 test('"+ Add task" keeps the same height when it opens (no column jump)', async () => {
   launched = await launchApp({ seed: true })
   const { page } = launched

@@ -72,6 +72,10 @@ export function BoardColumn({
       <div
         className={cn(
           'flex min-h-0 flex-1 scrollbar-thin flex-col gap-1.5 overflow-y-auto px-2 pb-2',
+          // A scroll container clips at its padding edge, so the first card's
+          // selection/focus ring (drawn outside the card) needs headroom. The
+          // negative margin cancels the padding so the cards do not move.
+          '-mt-1 pt-1',
           // Keep a decent drop area even when the column is empty.
           'min-h-16',
         )}
