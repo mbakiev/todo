@@ -43,6 +43,12 @@ const file = (tasks: Task[], tags: Tag[] = []): ExportFile => ({
 })
 
 describe('parseExportFile', () => {
+  it('accepts a file saved with a UTF-8 byte-order mark', () => {
+    const text = JSON.stringify(file([task({ id: 'bom' })]))
+    const bytes = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(text, 'utf8')])
+    expect(parseExportFile(bytes.toString('utf8')).tasks.map((t) => t.id)).toEqual(['bom'])
+  })
+
   it('round-trips buildExport', () => {
     r.tasks.create({ title: 'a', newTagNames: ['x'], dueDate: '2026-11-20' })
     const exported = buildExport(r, 42)
@@ -50,6 +56,7 @@ describe('parseExportFile', () => {
   })
   it('rejects non-JSON, foreign files and damaged files', () => {
     expect(() => parseExportFile('nope')).toThrow(/not valid JSON/)
+    expect(() => parseExportFile('\uFEFF\uFEFF{}')).toThrow(/not valid JSON/)
     expect(() => parseExportFile('{"app":"other"}')).toThrow(/not a Martin's To Dos export/)
     expect(() => parseExportFile(JSON.stringify({ ...file([]), tasks: [{ id: 1 }] }))).toThrow(
       /damaged or incomplete at tasks\.0/,
@@ -144,6 +151,57 @@ describe('applyImport — merge', () => {
     r.tags.create({ name: 'b' })
     applyImport(r, file([], [tag({ id: a.id, name: 'B', color: a.color })]), 'merge')
     expect(r.tags.get(a.id)?.name).toBe('a')
+  })
+
+  it('tag matching is order-independent: a renamed tag plus a new tag reusing its old name', () => {
+    const a = r.tags.create({ name: 'A' })
+    r.tasks.create({ title: 'local' })
+    // The file's machine renamed A → B (same id) and then created a brand-new tag "A".
+    for (const tags of [
+      [tag({ id: 'new-a', name: 'A' }), tag({ id: a.id, name: 'B', color: a.color })],
+      [tag({ id: a.id, name: 'B', color: a.color }), tag({ id: 'new-a', name: 'A' })],
+    ]) {
+      applyImport(
+        r,
+        file(
+          [
+            task({ id: 'tagged-new-a', tagIds: ['new-a'], updatedAt: Date.now() + 1e6 }),
+            task({ id: 'tagged-b', tagIds: [a.id], updatedAt: Date.now() + 1e6 }),
+          ],
+          tags,
+        ),
+        'merge',
+      )
+      const names = (id: string): string[] =>
+        (r.tasks.get(id)?.tagIds ?? []).map((t) => r.tags.get(t)?.name ?? '?')
+      expect(names('tagged-new-a')).toEqual(['A'])
+      expect(names('tagged-b')).toEqual(['B'])
+      expect(r.tags.get(a.id)?.name).toBe('B')
+      expect(
+        r.tags
+          .list()
+          .map((t) => t.name)
+          .sort(),
+      ).toEqual(['A', 'B'])
+    }
+  })
+
+  it('swapped tag names (A↔B by id) merge without a UNIQUE conflict', () => {
+    const a = r.tags.create({ name: 'A' })
+    const b = r.tags.create({ name: 'B' })
+    applyImport(
+      r,
+      file(
+        [],
+        [
+          tag({ id: a.id, name: 'B', color: a.color }),
+          tag({ id: b.id, name: 'A', color: b.color }),
+        ],
+      ),
+      'merge',
+    )
+    expect(r.tags.get(a.id)?.name).toBe('B')
+    expect(r.tags.get(b.id)?.name).toBe('A')
   })
 
   it('drops references to tags that exist nowhere', () => {

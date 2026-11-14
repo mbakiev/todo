@@ -30,7 +30,8 @@ export function buildExport(repos: Repos, now: number = Date.now()): ExportFile 
 export function parseExportFile(text: string): ExportFile {
   let raw: unknown
   try {
-    raw = JSON.parse(text)
+    // Editors on Windows (Notepad "UTF-8 with BOM") prepend U+FEFF, which JSON.parse rejects.
+    raw = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text)
   } catch {
     throw new ImportError('This file is not valid JSON.')
   }
@@ -70,8 +71,8 @@ function firstDuplicate(ids: string[]): string | null {
 
 /**
  * Applies an import in one transaction.
- * - merge: tags matched by id, then case-insensitively by name (matched-by-id tags take the
- *   file's name/colour unless that name belongs to another tag); tasks upserted by id, the
+ * - merge: tags matched by id, then case-insensitively by name (see mergeTags); tasks
+ *   upserted by id, the
  *   record with the newer `updatedAt` wins (ties keep the local copy). A local soft-deleted
  *   task is revived only if the file's copy is newer.
  * - replace: everything (including soft-deleted tasks) is removed first. The caller must
@@ -96,29 +97,7 @@ export function applyImport(
   db.transaction(() => {
     if (mode === 'replace') rows.deleteAll()
 
-    // --- tags: file id → local id
-    const tagIdMap = new Map<string, string>()
-    for (const t of file.tags) {
-      const byId = repos.tags.get(t.id)
-      if (byId) {
-        tagIdMap.set(t.id, byId.id)
-        const clash = repos.tags.findByName(t.name)
-        const name = clash && clash.id !== byId.id ? byId.name : t.name
-        if (name !== byId.name || t.color !== byId.color) {
-          rows.setTagNameAndColor(byId.id, name, t.color)
-          result.tagsUpdated++
-        }
-        continue
-      }
-      const byName = repos.tags.findByName(t.name)
-      if (byName) {
-        tagIdMap.set(t.id, byName.id)
-        continue
-      }
-      rows.insertTag(t)
-      tagIdMap.set(t.id, t.id)
-      result.tagsAdded++
-    }
+    const tagIdMap = mergeTags(repos, rows, file.tags, result)
 
     // --- tasks
     for (const t of file.tasks) {
@@ -137,6 +116,95 @@ export function applyImport(
     }
   })
   return result
+}
+
+/**
+ * Maps every file tag onto a local tag (file id → local id), renaming / recolouring /
+ * inserting as needed. Order-independent:
+ * 1. every file tag whose id exists locally claims that local tag;
+ * 2. the remaining file tags are matched case-insensitively by name, but only against local
+ *    tags no id match claimed (so "A renamed to B" plus a brand-new "A" stay two tags);
+ * 3. the rest are inserted.
+ * A matched-by-id tag takes the file's name unless that name is still held by another tag
+ * after the merge (then it keeps its local name). Renames go through temporary names first so
+ * swaps (A↔B) never trip the UNIQUE constraint.
+ */
+function mergeTags(
+  repos: Repos,
+  rows: ReturnType<typeof createImportRepo>,
+  fileTags: readonly ExportFile['tags'][number][],
+  result: { tagsAdded: number; tagsUpdated: number },
+): Map<string, string> {
+  const key = (name: string): string => name.trim().toLowerCase()
+  const local = repos.tags.list()
+  const localById = new Map(local.map((t) => [t.id, t]))
+  const tagIdMap = new Map<string, string>()
+  const claimed = new Set<string>()
+
+  // 1. id matches
+  const byId = fileTags.filter((t) => localById.has(t.id))
+  for (const t of byId) {
+    tagIdMap.set(t.id, t.id)
+    claimed.add(t.id)
+  }
+  // 2. name matches against unclaimed local tags
+  const unclaimedByName = new Map(
+    local.filter((t) => !claimed.has(t.id)).map((t) => [key(t.name), t]),
+  )
+  const rest: ExportFile['tags'][number][] = []
+  for (const t of fileTags) {
+    if (tagIdMap.has(t.id)) continue
+    const match = unclaimedByName.get(key(t.name))
+    if (match && !claimed.has(match.id)) {
+      tagIdMap.set(t.id, match.id)
+      claimed.add(match.id)
+    } else {
+      rest.push(t)
+    }
+  }
+
+  // Final names: every local tag not matched by id keeps its name.
+  const taken = new Map<string, string>() // name key → local id holding it after the merge
+  for (const t of local) if (!byId.some((f) => f.id === t.id)) taken.set(key(t.name), t.id)
+  const finalName = new Map<string, string>()
+  for (const t of byId) {
+    const current = localById.get(t.id)?.name ?? t.name
+    const holder = taken.get(key(t.name))
+    const name = holder === undefined || holder === t.id ? t.name.trim() : current
+    finalName.set(t.id, name)
+    taken.set(key(name), t.id)
+  }
+
+  // 3a. renames (via temporary names) and recolours of id matches
+  const changed = byId.filter((t) => {
+    const cur = localById.get(t.id)
+    return cur && (cur.name !== finalName.get(t.id) || cur.color !== t.color)
+  })
+  for (const t of changed) {
+    const cur = localById.get(t.id)
+    if (cur && cur.name !== finalName.get(t.id)) {
+      rows.setTagNameAndColor(t.id, `~import-tmp-${t.id}`, cur.color)
+    }
+  }
+  for (const t of changed) {
+    rows.setTagNameAndColor(t.id, finalName.get(t.id) ?? t.name, t.color)
+    result.tagsUpdated++
+  }
+
+  // 3b. inserts; a name that is still taken (e.g. by a tag that kept its local name) maps onto
+  //     that tag instead of creating a duplicate.
+  for (const t of rest) {
+    const holder = taken.get(key(t.name))
+    if (holder !== undefined) {
+      tagIdMap.set(t.id, holder)
+      continue
+    }
+    rows.insertTag(t)
+    tagIdMap.set(t.id, t.id)
+    taken.set(key(t.name), t.id)
+    result.tagsAdded++
+  }
+  return tagIdMap
 }
 
 /** Everything a window needs to resync after an import. */
