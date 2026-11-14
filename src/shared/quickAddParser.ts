@@ -1,5 +1,6 @@
 // Inline token parser for quick add (spec §8).
-//   #word            → tag (created if new). Digits-only (`#1234`) is NOT a tag.
+//   #word            → tag (created if new). Digits-only (`#1234`) is NOT a tag, nor is a
+//                      word longer than the tag-name limit (it stays in the title).
 //   !low !med !high !crit (also !medium !critical, !1–!4) → priority
 //   @today @tomorrow @fri @nov20 @2026-12-01 … → due date; only consumed if it parses
 //                      (a bare weekday is the next one strictly after today)
@@ -7,6 +8,7 @@
 // Tokens must start at the beginning of the input or after whitespace.
 
 import * as chrono from 'chrono-node'
+import { MAX_TAG_NAME_LENGTH } from './constants'
 import { addDays, isLocalDate, localDateToDate, presetDate, toLocalDate } from './dates'
 import type { LocalDate, Priority, WeekStartsOn } from './types'
 
@@ -132,7 +134,10 @@ export function parseQuickAdd(input: string, options: QuickAddParseOptions): Qui
     const raw = input.slice(start, end)
 
     if (sigil === '#') {
-      if (!TAG_BODY_RE.test(body) || DIGITS_RE.test(body)) continue
+      // Over-long `#words` (pasted URLs fragments, hashes…) stay in the title: a tag that long
+      // could not be created and would fail the whole save.
+      if (!TAG_BODY_RE.test(body) || DIGITS_RE.test(body) || body.length > MAX_TAG_NAME_LENGTH)
+        continue
       tokens.push({ kind: 'tag', start, end, raw, value: body })
     } else if (sigil === '!') {
       const p = PRIORITY_WORDS[body.toLowerCase()]

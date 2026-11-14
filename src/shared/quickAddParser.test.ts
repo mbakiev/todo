@@ -1,4 +1,5 @@
 import { parseDateToken, parseQuickAdd, removeToken } from './quickAddParser'
+import { taskCreateInputSchema } from './schemas'
 
 const today = '2026-11-13' // Friday
 const parse = (s: string) => parseQuickAdd(s, { today, weekStartsOn: 1 })
@@ -35,6 +36,18 @@ describe('parseQuickAdd', () => {
     const r = parse('Fix bug #1234 #v2')
     expect(r.title).toBe('Fix bug #1234')
     expect(r.tagNames).toEqual(['v2'])
+  })
+
+  it('a #word longer than the tag-name limit is not a tag and stays in the title', () => {
+    const long = 'x'.repeat(51)
+    const ok = 'y'.repeat(50)
+    const r = parse(`Check #${long} and #${ok}`)
+    expect(r.tagNames).toEqual([ok])
+    expect(r.title).toBe(`Check #${long} and`)
+    // The resulting create input is accepted by the IPC schema.
+    expect(
+      taskCreateInputSchema.safeParse({ title: r.title, newTagNames: r.tagNames }).success,
+    ).toBe(true)
   })
 
   it('@john is not consumed', () => {

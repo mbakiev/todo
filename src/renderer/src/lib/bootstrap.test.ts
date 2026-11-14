@@ -36,7 +36,9 @@ function setup() {
     tags: { list: vi.fn(() => tags.promise) },
     settings: { get: vi.fn(() => settings.promise) },
     app: {
-      getInfo: vi.fn(() => Promise.resolve({ version: '1', platform: 'darwin', isDev: false })),
+      getInfo: vi.fn(() =>
+        Promise.resolve({ version: '1', platform: 'darwin' as const, isDev: false }),
+      ),
     },
     on: {
       dataChanged: vi.fn((cb) => ((listeners.dataChanged = cb), () => {})),

@@ -1,9 +1,11 @@
 import { ipcMain } from 'electron'
 import { z } from 'zod'
+import { describeValidationIssue } from '@shared/validationMessage'
 
 /**
  * Registers an `ipcMain.handle` whose arguments are validated with a zod tuple schema.
- * Validation errors are rethrown with a readable message (the renderer shows it in a toast).
+ * Validation errors are rethrown as one plain sentence (describeValidationIssue), which the
+ * renderer's errorMessage() shows in the toast.
  */
 export function handle<A extends z.ZodTuple, R>(
   channel: string,
@@ -15,8 +17,9 @@ export function handle<A extends z.ZodTuple, R>(
     const parsed = args.safeParse(raw)
     if (!parsed.success) {
       const issue = parsed.error.issues[0]
-      const where = issue && issue.path.length > 0 ? ` (${issue.path.join('.')})` : ''
-      throw new Error(`Invalid input${where}: ${issue?.message ?? 'validation failed'}`)
+      // Logged in full for debugging; the user sees one plain sentence.
+      console.warn(`[ipc] invalid input for ${channel}`, parsed.error.issues)
+      throw new Error(describeValidationIssue(issue))
     }
     return fn(...(parsed.data as z.output<A>))
   })
