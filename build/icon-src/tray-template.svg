@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <!-- macOS menu-bar template: black + alpha only (the OS tints it). Checkbox with a tick. -->
+  <rect x="1.75" y="1.75" width="12.5" height="12.5" rx="3.25" fill="none" stroke="#000" stroke-width="1.5" />
+  <path d="M4.9 8.1 L7.1 10.3 L11.2 5.9" fill="none" stroke="#000" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

@@ -1,5 +1,10 @@
-// Main-process bootstrap: single-instance lock, DB, IPC, windows, app lifecycle.
-import { app, nativeTheme, session, type BrowserWindow } from 'electron'
+// Main-process bootstrap: single-instance lock, DB, IPC, windows, tray, menu, lifecycle.
+//
+// Lifecycle (spec §9): closing the main window only hides it — the app lives on in the
+// tray (and the Dock on macOS). A real quit comes from tray Quit, the app menu / Cmd+Q, or
+// OS shutdown / logout; `before-quit` (and the Windows session-end events in
+// mainWindow.ts) set `ctx.quitting` so windows are then allowed to close.
+import { app, nativeTheme, powerMonitor, session, type BrowserWindow } from 'electron'
 import { IPC } from '@shared/ipc'
 import type { DataChange, Settings, ShortcutStatus } from '@shared/types'
 import { broadcast } from './broadcast'
@@ -7,13 +12,14 @@ import type { AppContext } from './context'
 import { openDatabase } from './db'
 import { seedDemoData } from './db/seed'
 import { registerIpcHandlers } from './ipc'
-import { configureUserDataDir, getAppPaths, isDev } from './paths'
-import { applyLaunchAtLogin } from './services/autoLaunch'
+import { installAppMenu } from './menu'
+import { configureUserDataDir, getAppPaths, isDev, isTestRun } from './paths'
+import { applyLaunchAtLogin, wasLaunchedAtLogin } from './services/autoLaunch'
 import { startAutomaticBackups } from './services/backup'
-import { registerGlobalShortcuts, unregisterGlobalShortcuts } from './shortcuts'
+import { installTestHook, registerGlobalShortcuts, unregisterGlobalShortcuts } from './shortcuts'
 import { createTray, destroyTray } from './tray'
 import { createMainWindow, getMainWindow, showMainWindow } from './windows/mainWindow'
-import { createQuickAddWindow } from './windows/quickAddWindow'
+import { createQuickAddWindow, hideQuickAdd, showQuickAdd } from './windows/quickAddWindow'
 
 configureUserDataDir()
 
@@ -70,30 +76,42 @@ async function bootstrap(): Promise<void> {
       broadcast(IPC.events.shortcutStatusChanged, status),
   }
 
+  // Quitting must never be blocked by the hide-on-close handlers.
+  app.on('before-quit', () => {
+    ctx.quitting = true
+  })
+  powerMonitor.on('shutdown', () => {
+    ctx.quitting = true
+  })
+
   nativeTheme.themeSource = lastSettings.theme
   registerIpcHandlers(ctx)
+  installAppMenu(ctx)
 
-  createMainWindow(ctx)
+  // Launched by the OS at login → start quietly in the tray.
+  createMainWindow(ctx, { show: !wasLaunchedAtLogin() })
   quickAddWindow = createQuickAddWindow(ctx)
   createTray(ctx)
   registerGlobalShortcuts(ctx, lastSettings.shortcuts)
   applyLaunchAtLogin(ctx, lastSettings.launchAtLogin)
   const stopBackups = startAutomaticBackups(ctx)
 
+  if (isTestRun) {
+    installTestHook({
+      showQuickAdd: () => showQuickAdd(ctx),
+      hideQuickAdd: () => hideQuickAdd(ctx),
+      isQuitting: () => ctx.quitting,
+    })
+  }
+
+  // A second launch (e.g. from the Start menu / Finder) focuses the running instance.
   app.on('second-instance', () => void showMainWindow(ctx))
 
-  // macOS: clicking the dock icon re-shows the window.
+  // macOS: clicking the Dock icon re-shows the window.
   app.on('activate', () => void showMainWindow(ctx))
 
-  app.on('before-quit', () => {
-    ctx.quitting = true
-  })
-
-  app.on('window-all-closed', () => {
-    // Phase 1: plain window behaviour. The desktop-shell feature replaces this with
-    // hide-on-close + tray (spec §9); until then quit on Windows/Linux like a normal app.
-    if (process.platform !== 'darwin') app.quit()
-  })
+  // The app keeps running in the tray when every window is hidden/closed.
+  app.on('window-all-closed', () => {})
 
   app.on('will-quit', () => {
     stopBackups()

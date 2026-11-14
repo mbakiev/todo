@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <!-- Windows / Linux tray: solid indigo tile with a white tick — readable on light and
+       dark taskbars alike. -->
+  <rect x="0.75" y="0.75" width="14.5" height="14.5" rx="3.5" fill="#4F46E5" />
+  <path d="M4.4 8.2 L6.9 10.6 L11.6 5.6" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

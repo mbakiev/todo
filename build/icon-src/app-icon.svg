@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- App icon: indigo rounded square (Apple 824px grid on a 1024 canvas) with a check mark
+       over two list lines. Regenerate PNGs with `npx electron scripts/generate-icons.mjs`. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6366F1" />
+      <stop offset="1" stop-color="#4F46E5" />
+    </linearGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)" />
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="none" stroke="#000" stroke-opacity="0.08" stroke-width="4" />
+  <path d="M318 436 L446 562 L706 300" fill="none" stroke="#fff" stroke-width="84" stroke-linecap="round" stroke-linejoin="round" />
+  <rect x="318" y="660" width="388" height="52" rx="26" fill="#fff" fill-opacity="0.72" />
+  <rect x="318" y="760" width="250" height="52" rx="26" fill="#fff" fill-opacity="0.45" />
+</svg>

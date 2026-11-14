@@ -10,6 +10,26 @@ export interface LaunchedApp {
   close(): Promise<void>
 }
 
+/** The page whose URL is the given renderer entry (`index` = main window). */
+export async function windowByEntry(
+  app: ElectronApplication,
+  entry: 'index' | 'quick-add',
+): Promise<Page> {
+  const matches = (p: Page): boolean =>
+    p.url().split(/[?#]/)[0]?.endsWith(`/${entry}.html`) ?? false
+  const deadline = Date.now() + 20_000
+  while (Date.now() < deadline) {
+    const found = app.windows().find(matches)
+    if (found) return found
+    await new Promise((r) => setTimeout(r, 50))
+  }
+  throw new Error(`No ${entry}.html window appeared`)
+}
+
+async function mainWindowPage(app: ElectronApplication): Promise<Page> {
+  return windowByEntry(app, 'index')
+}
+
 /**
  * Launches the built app (`out/main/index.js`) against a fresh temp userData dir
  * (MARTIN_TODOS_USER_DATA), so tests never touch real or dev data.
@@ -20,7 +40,8 @@ export async function launchApp(options: { seed?: boolean } = {}): Promise<Launc
     args: [resolve(__dirname, '../out/main/index.js'), ...(options.seed ? ['--seed'] : [])],
     env: { ...process.env, MARTIN_TODOS_USER_DATA: userData, ELECTRON_RENDERER_URL: '' },
   })
-  const page = await app.firstWindow()
+  // The hidden quick-add window is created at startup too; pick the main window by entry.
+  const page = await mainWindowPage(app)
   await page.waitForSelector('[data-slot="view"]')
   return {
     app,

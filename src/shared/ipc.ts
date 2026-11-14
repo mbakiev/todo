@@ -11,6 +11,7 @@ import type {
 } from './schemas'
 import type {
   AppInfo,
+  BackupInfo,
   DataChange,
   ImportResult,
   Settings,
@@ -43,6 +44,7 @@ export const IPC = {
     importFromFile: 'data:importFromFile',
     backupNow: 'data:backupNow',
     revealDataFolder: 'data:revealDataFolder',
+    getBackupInfo: 'data:getBackupInfo',
   },
   app: {
     getInfo: 'app:getInfo',
@@ -51,6 +53,7 @@ export const IPC = {
     resizeQuickAdd: 'app:resizeQuickAdd',
     getShortcutStatus: 'app:getShortcutStatus',
     openSettings: 'app:openSettings',
+    setGlobalShortcutsSuspended: 'app:setGlobalShortcutsSuspended',
   },
   /** main → renderer events */
   events: {
@@ -109,6 +112,8 @@ export interface Api {
     importFromFile(mode: 'merge' | 'replace'): Promise<ImportResult | null>
     backupNow(): Promise<{ path: string }>
     revealDataFolder(): Promise<void>
+    /** Newest automatic/manual backup (null if none yet) and where backups live. */
+    getBackupInfo(): Promise<BackupInfo>
   }
   app: {
     getInfo(): Promise<AppInfo>
@@ -121,6 +126,11 @@ export interface Api {
     getShortcutStatus(): Promise<ShortcutStatus>
     /** Shows the main window and asks it to open the Settings dialog. */
     openSettings(): Promise<void>
+    /**
+     * Temporarily unregisters the global shortcuts (true) or restores them (false), so the
+     * Settings shortcut recorder can capture combos that are currently registered.
+     */
+    setGlobalShortcutsSuspended(suspended: boolean): Promise<void>
   }
   on: {
     dataChanged(cb: (e: DataChange) => void): Unsubscribe
