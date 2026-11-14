@@ -268,7 +268,9 @@
   .app-drag {
     -webkit-app-region: drag;
   }
-  .app-no-drag {
+  .app-no-drag,
+  /* Controls inside a drag region must stay clickable. */
+  .app-drag :is(button, input, textarea, select, a, [role='button'], [role='separator']) {
     -webkit-app-region: no-drag;
   }
   .scrollbar-thin {

@@ -46,7 +46,7 @@ test('quick add, new-task dialog and settings (light + dark)', async () => {
     await qa.getByRole('textbox', { name: 'Description' }).fill('Include the hiring plan numbers.')
     await qa.waitForTimeout(250)
     await qa.screenshot({ path: join(OUT, `quick-add-tokens-${theme}.png`) })
-    await qa.getByRole('button', { name: /^(Today|Due date)$/ }).click()
+    await qa.getByRole('button', { name: /^Due date:/ }).click()
     await qa.waitForTimeout(400)
     await qa.screenshot({ path: join(OUT, `quick-add-datepicker-${theme}.png`) })
     await qa.keyboard.press('Escape') // closes the popover only

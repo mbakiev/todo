@@ -205,7 +205,8 @@ function MorePopover({
         <button
           type="button"
           data-more={date}
-          className="pointer-events-auto absolute flex items-center rounded-[4px] px-1.5 text-[11px] font-medium text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
+          aria-label={`${hidden} more tasks`}
+          className="pointer-events-auto absolute flex items-center overflow-hidden rounded-[4px] px-1.5 text-[11px] font-medium whitespace-nowrap text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
           style={style}
         >
           +{hidden} more

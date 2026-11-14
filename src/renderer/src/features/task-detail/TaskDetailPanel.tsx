@@ -167,7 +167,7 @@ function PanelBody({ task }: { task: Task }) {
 
   return (
     <>
-      <header className="flex h-12 shrink-0 items-center gap-1 border-b px-3">
+      <header className="app-drag flex h-12 shrink-0 items-center gap-1 border-b px-3">
         <Button
           variant="ghost"
           size="sm"

@@ -225,92 +225,91 @@ export function QuickAddForm({
 
       {/* Each value shows once: parsed !priority / @date live in their controls (changing or
           clearing a control is the override), tags are chips beside the Tags control. */}
-      <div
-        className={cn(
-          'flex flex-wrap items-center gap-0.5 px-2.5',
-          isWindow ? 'pt-2 pb-2' : 'pt-3 pb-2',
-        )}
-      >
-        <span
-          className="contents"
-          title={
-            resolved.overridden.priority
-              ? 'Set here; overrides the !priority in the title'
-              : undefined
-          }
-        >
-          <PrioritySelect value={resolved.priority} onChange={setPriority} />
-        </span>
-        <DatePickerField
-          value={resolved.dueDate}
-          onChange={setDue}
-          placeholder="Due date"
-          label="Due date"
-          tone={dueTone}
-          min={resolved.startDate}
-        />
-        {!isWindow && (
+      <div className={cn('flex items-start gap-2 px-2.5', isWindow ? 'pt-2 pb-2' : 'pt-3 pb-2')}>
+        {/* Field controls (and tag chips) wrap; the actions on the right never do. */}
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
+          <span
+            className="contents"
+            title={
+              resolved.overridden.priority
+                ? 'Set here; overrides the !priority in the title'
+                : undefined
+            }
+          >
+            <PrioritySelect value={resolved.priority} onChange={setPriority} />
+          </span>
           <DatePickerField
-            value={resolved.startDate}
-            onChange={(v) => update({ explicitStart: v })}
-            placeholder="Start date"
-            label="Start date"
-            max={resolved.dueDate}
+            value={resolved.dueDate}
+            onChange={setDue}
+            placeholder="Due date"
+            label="Due date"
+            tone={dueTone}
+            min={resolved.startDate}
           />
-        )}
-        <TagPicker value={draft.pickedTagIds} onChange={(ids) => update({ pickedTagIds: ids })} />
-        {(resolved.tokenTags.length > 0 || pickedOnly.length > 0) && (
-          <div
-            className="flex min-w-0 flex-wrap items-center gap-1 pl-0.5"
-            data-testid="quick-add-tags"
-          >
-            {resolved.tokenTags.map(({ name, tag }) => (
-              <span key={name.toLowerCase()} title={tag ? undefined : 'New tag, created on save'}>
+          {!isWindow && (
+            <DatePickerField
+              value={resolved.startDate}
+              onChange={(v) => update({ explicitStart: v })}
+              placeholder="Start date"
+              label="Start date"
+              max={resolved.dueDate}
+            />
+          )}
+          <TagPicker value={draft.pickedTagIds} onChange={(ids) => update({ pickedTagIds: ids })} />
+          {(resolved.tokenTags.length > 0 || pickedOnly.length > 0) && (
+            <div
+              className="flex min-w-0 flex-wrap items-center gap-1 pl-0.5"
+              data-testid="quick-add-tags"
+            >
+              {resolved.tokenTags.map(({ name, tag }) => (
+                <span key={name.toLowerCase()} title={tag ? undefined : 'New tag, created on save'}>
+                  <TagChip
+                    tag={{ name, color: tag?.color ?? 'slate' }}
+                    className={cn(!tag && 'outline-1 outline-muted-foreground/40 outline-dashed')}
+                    onRemove={() => update({ text: removeTagToken(draft.text, parsed, name) })}
+                  />
+                </span>
+              ))}
+              {pickedOnly.map((t) => (
                 <TagChip
-                  tag={{ name, color: tag?.color ?? 'slate' }}
-                  className={cn(!tag && 'outline-1 outline-muted-foreground/40 outline-dashed')}
-                  onRemove={() => update({ text: removeTagToken(draft.text, parsed, name) })}
+                  key={t.id}
+                  tag={t}
+                  onRemove={() =>
+                    update({ pickedTagIds: draft.pickedTagIds.filter((id) => id !== t.id) })
+                  }
                 />
-              </span>
-            ))}
-            {pickedOnly.map((t) => (
-              <TagChip
-                key={t.id}
-                tag={t}
-                onRemove={() =>
-                  update({ pickedTagIds: draft.pickedTagIds.filter((id) => id !== t.id) })
-                }
-              />
-            ))}
-          </div>
-        )}
-        <div className="flex-1" />
-        {isWindow ? (
-          <Button
-            size="sm"
-            className="h-7 gap-1.5 px-2.5 text-[13px]"
-            disabled={saving || resolved.title === ''}
-            onClick={() => void submit(false)}
-          >
-            Add task
-            <CornerDownLeft className="size-3.5 opacity-70" />
-          </Button>
-        ) : (
-          <>
-            <label className="mr-2 flex items-center gap-1.5 text-[12px] text-muted-foreground">
-              <Switch size="sm" checked={createMore} onCheckedChange={setCreateMore} />
-              Create more
-            </label>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center">
+          {isWindow ? (
             <Button
               size="sm"
-              className="h-7 px-3 text-[13px]"
+              className="h-7 gap-1.5 px-2.5 text-[13px]"
               disabled={saving || resolved.title === ''}
-              onClick={() => void submit(createMore)}
+              onClick={() => void submit(false)}
             >
-              Create task
+              Add task
+              <CornerDownLeft className="size-3.5 opacity-70" />
             </Button>
-          </>
-        )}
+          ) : (
+            <>
+              <label className="mr-2 flex items-center gap-1.5 text-[12px] text-muted-foreground">
+                <Switch size="sm" checked={createMore} onCheckedChange={setCreateMore} />
+                Create more
+              </label>
+              <Button
+                size="sm"
+                className="h-7 px-3 text-[13px]"
+                disabled={saving || resolved.title === ''}
+                onClick={() => void submit(createMore)}
+              >
+                Create task
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="flex items-center gap-3 border-t bg-muted/40 px-4 py-1.5 text-[11px] text-muted-foreground">
