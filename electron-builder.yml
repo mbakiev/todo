@@ -1,29 +1,77 @@
-# Packaging config (spec §11). Not exercised in phase 1; a later phase owns packaging.
+# Packaging config (spec §11). Build with `npm run dist:mac` / `npm run dist:win`
+# (`npm run pack` for an unpacked app dir). See README.md and docs/WINDOWS_HANDOVER.md.
 appId: com.martin.todos
+# No apostrophe: this is the bundle / exe / install-dir / userData folder name.
+# The UI shows "Martin's To Dos" (APP_DISPLAY_NAME).
 productName: Martins To Dos
+copyright: Copyright © 2026 Martin
 directories:
   output: release/${version}
   buildResources: build
+
+# The main process is bundled by electron-vite except for `zod` (externalized as a
+# dependency); the renderer bundles everything. So the only node_modules the packaged app
+# needs at runtime is zod — keep the rest (React, Tiptap, … ~all already in the renderer
+# bundle) out of the asar.
 files:
   - out/**
   - package.json
   - '!**/*.map'
+  - '!node_modules/**'
+  - node_modules/zod/**
+# Tray icons, window icon: read from process.resourcesPath (src/main/paths.ts resourcePath).
 extraResources:
   - from: resources
     to: .
     filter: ['**/*']
 asar: true
+
 mac:
   category: public.app-category.productivity
+  icon: build/icon.png
   target:
     - target: dmg
       arch: [arm64, x64]
-  identity: null # unsigned for now
+    - target: zip
+      arch: [arm64, x64]
+  # Ad-hoc signature ("-"): no Apple certificate needed. Apple Silicon refuses to run
+  # binaries whose signature is missing/broken, and `identity: null` leaves Electron's
+  # original signature invalidated by our Info.plist/renames. Ad-hoc + no hardened runtime
+  # runs fine on the machine that built it (and after `xattr -cr` elsewhere).
+  identity: '-'
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  notarize: false
+  artifactName: MartinsToDos-${version}-mac-${arch}.${ext}
+  extendInfo:
+    # Shown in Finder / Dock / menu bar instead of the bundle name "Martins To Dos".
+    CFBundleDisplayName: Martin's To Dos
+    LSApplicationCategoryType: public.app-category.productivity
+dmg:
+  title: Martins To Dos ${version}
+  artifactName: MartinsToDos-${version}-mac-${arch}.${ext}
+
 win:
+  icon: build/icon.ico
   target:
     - target: nsis
       arch: [x64]
+  # Unsigned (no certificate); SmartScreen will warn on first run — see WINDOWS_HANDOVER.md.
+  signAndEditExecutable: true
 nsis:
+  # Assisted installer, forced per-user (build/installer.nsh): installs to
+  # %LOCALAPPDATA%\Programs\Martins To Dos, no admin / UAC prompt.
   oneClick: false
-  allowToChangeInstallationDirectory: true
+  perMachine: false
+  allowElevation: false
+  allowToChangeInstallationDirectory: false
+  createStartMenuShortcut: true
+  # Desktop shortcut is an opt-in checkbox on the finish page (build/installer.nsh).
+  createDesktopShortcut: false
+  runAfterFinish: true
+  deleteAppDataOnUninstall: false
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  artifactName: MartinsToDos-${version}-win-${arch}-setup.${ext}
+
 publish: null

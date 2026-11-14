@@ -1,0 +1,14 @@
+# Keep LF in the working tree on every OS (Prettier's default `endOfLine: lf`), so a
+# Windows checkout with core.autocrlf=true doesn't make `npm run format:check` / lint fail.
+* text=auto eol=lf
+
+# Windows-only scripts keep CRLF.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary assets.
+*.png binary
+*.ico binary
+*.icns binary
+*.db binary

@@ -26,6 +26,10 @@ import { requestRendererFlush } from './windows/rendererFlush'
 
 configureUserDataDir()
 
+// Windows: must match the AUMID the NSIS installer stamps on its shortcuts (electron-builder
+// `appId`), or the running window and the pinned/Start-menu shortcut group separately.
+if (process.platform === 'win32') app.setAppUserModelId('com.martin.todos')
+
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {

@@ -4,7 +4,8 @@
 //
 // Renders each SVG in an offscreen Electron window (Chromium's SVG renderer, transparent
 // background) — no extra dependencies, works on macOS and Windows. Outputs:
-//   build/icon.png                      1024×1024 app icon (electron-builder derives .icns/.ico)
+//   build/icon.png                      1024×1024 app icon (electron-builder derives the .icns)
+//   build/icon.ico                      Windows app + installer icon, 16–256 px, tile-cropped
 //   resources/icon.png                  256×256 window icon (Windows/Linux dev builds)
 //   resources/trayTemplate.png, @2x     macOS menu-bar template (16 / 32 px)
 //   resources/tray.ico                  Windows tray, PNG-in-ICO at 16/20/24/32/40/48/64 px
@@ -74,6 +75,14 @@ app.whenReady().then(async () => {
   const appIcon = src('app-icon.svg')
   out('build/icon.png', await render(appIcon, 1024))
   out('resources/icon.png', await render(appIcon, 256))
+  // Windows app/installer icon: same artwork, but cropped to the tile (Windows icons fill
+  // their canvas; the macOS grid's ~10% margin would make it look small in the taskbar).
+  const winIcon = appIcon.replace('viewBox="0 0 1024 1024"', 'viewBox="84 84 856 856"')
+  const winEntries = []
+  for (const size of [16, 20, 24, 32, 40, 48, 64, 128, 256]) {
+    winEntries.push({ size, png: await render(winIcon, size) })
+  }
+  out('build/icon.ico', ico(winEntries))
 
   const template = src('tray-template.svg')
   out('resources/trayTemplate.png', await render(template, 16))
