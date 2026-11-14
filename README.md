@@ -8,6 +8,20 @@ boards keep the focus on what matters today. Spec: [`docs/ARCHITECTURE.md`](docs
 
 **Using the app:** see the [User Guide](docs/USER_GUIDE.md).
 
+## Download
+
+Get the latest version from the
+[Releases page](https://github.com/mbakiev/todo/releases/latest):
+
+| Your computer | File |
+|---|---|
+| Mac with Apple silicon (M1 or later) | `MartinsToDos-<version>-mac-arm64.dmg` |
+| Mac with an Intel processor | `MartinsToDos-<version>-mac-x64.dmg` |
+| Windows 10 / 11 (64-bit) | `MartinsToDos-<version>-win-x64-setup.exe` |
+
+The installers are unsigned, so macOS and Windows ask before running them; each release's
+notes explain the one-time step.
+
 ## Features
 
 - Quick-add popup from anywhere, with inline tokens: `#tag`, `!high`, `@tomorrow`
@@ -112,18 +126,20 @@ demand (Actions → CI → Run workflow):
 CodeQL scans the code on pushes, PRs and weekly; Dependabot proposes GitHub Actions updates
 weekly and npm updates monthly (minor + patch grouped in one PR).
 
-**Downloading a build:** open a CI run (Actions tab, or the checks on a PR) → *Artifacts* →
-`installers-macos` (arm64 + x64 `.dmg` / `.zip`) or `installers-windows` (`-setup.exe`).
-Artifacts are kept for 7 days.
+**Downloading a build:** released versions are on the
+[Releases page](https://github.com/mbakiev/todo/releases). For an unreleased build, open a CI
+run (Actions tab, or the checks on a PR) → *Artifacts* → `installers-macos` (arm64 + x64
+`.dmg` / `.zip`) or `installers-windows` (`-setup.exe`). Artifacts are kept for 7 days.
 
 **Cutting a release:**
 
 1. Bump `"version"` in `package.json` (and `package-lock.json`), e.g. `npm version 0.2.0 --no-git-tag-version`, and commit it to `main`.
 2. `git tag v0.2.0 && git push origin v0.2.0`.
 3. `release.yml` checks that the tag equals `v` + the `package.json` version, runs the whole
-   CI workflow, then publishes a GitHub Release with auto-generated notes and the macOS
-   DMGs/ZIPs and the Windows installer attached. A tag with a suffix (`v0.2.0-beta.1`) becomes
-   a pre-release.
+   CI workflow, then publishes a GitHub Release with the macOS DMGs/ZIPs, the Windows
+   installer and `SHA256SUMS.txt` attached. The notes are `.github/release-notes.md`
+   (download table, first-launch steps) followed by GitHub's auto-generated change list. A
+   tag with a suffix (`v0.2.0-beta.1`) becomes a pre-release.
 
 **The installers are unsigned** (signing certificates cost money): the macOS app is ad-hoc
 signed and not notarized, so Gatekeeper blocks a downloaded copy until you allow it

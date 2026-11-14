@@ -555,8 +555,10 @@ no theme gallery.
   packaged builds) and uploads them as artifacts (7 days). On Windows it also installs the
   NSIS installer silently, smoke-tests the installed exe and uninstalls it.
 - `release.yml` (tag `v*.*.*`): tag must equal `v` + `package.json` version; runs `ci.yml`,
-  then `gh release create --generate-notes` with the artifacts from that same run. Only that
-  last job has `contents: write`.
+  then `gh release create` with the artifacts from that same run plus `SHA256SUMS.txt`. The
+  notes are `.github/release-notes.md` (download table, first-launch steps; `{{VERSION}}`,
+  `{{TAG}}`, `{{REPOSITORY}}` filled in) followed by GitHub's generated change list. Only
+  that last job has `contents: write`.
 - Node for CI comes from `.nvmrc` (24, the Node bundled in Electron 45); `engines` stays
   `>=22.12.0`. `codeql.yml` (JS/TS, weekly too) and `dependabot.yml` complete the set.
 

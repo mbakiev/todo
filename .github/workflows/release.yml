@@ -1,6 +1,8 @@
 # Cut a release: bump "version" in package.json, commit, tag `v<version>`, push the tag.
 # Runs the full CI workflow (checks, unit + e2e tests, packaging + smoke test) and then
-# publishes a GitHub Release with auto-generated notes and the installers attached.
+# publishes a GitHub Release with the installers and SHA256SUMS.txt attached. The release
+# notes are .github/release-notes.md (download table, first-launch steps) followed by
+# GitHub's auto-generated change list.
 name: Release
 
 on:
@@ -46,6 +48,8 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Only for .github/release-notes.md.
+      - uses: actions/checkout@v7
       - name: Download installers
         uses: actions/download-artifact@v8
         with:
@@ -64,6 +68,22 @@ jobs:
             "MartinsToDos-$version-win-x64-setup.exe"; do
             if [ ! -f "dist/$f" ]; then echo "::error::missing $f"; exit 1; fi
           done
+      - name: Write checksums
+        run: |
+          # Written outside dist first so the list never includes itself.
+          (cd dist && sha256sum -- * > ../SHA256SUMS.txt)
+          mv SHA256SUMS.txt dist/
+          cat dist/SHA256SUMS.txt
+      - name: Fill in the release notes
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          sed -e "s|{{VERSION}}|${TAG#v}|g" -e "s|{{TAG}}|$TAG|g" \
+            -e "s|{{REPOSITORY}}|$GITHUB_REPOSITORY|g" \
+            .github/release-notes.md > "$RUNNER_TEMP/release-notes.md"
+          if grep -q '{{' "$RUNNER_TEMP/release-notes.md"; then
+            echo "::error::unfilled placeholder in release notes"; exit 1
+          fi
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -75,6 +95,7 @@ jobs:
           gh release create "$TAG" dist/* \
             --repo "$GITHUB_REPOSITORY" \
             --title "Martin's To Dos ${TAG#v}" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
             --generate-notes \
             --verify-tag \
             "${prerelease[@]}"
