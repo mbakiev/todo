@@ -1,12 +1,13 @@
 // Export / import core (spec §9), free of Electron so it is unit-tested directly.
 //
-// Import writes rows with their original ids and timestamps, which the repos deliberately
-// do not allow, so this module issues its own SQL against `repos.db` inside one
-// transaction and reads results back through the repos.
+// Import writes rows with their original ids and timestamps, which the regular repos
+// deliberately do not allow; those writes live in db/importRepo.ts (all SQL stays under db/).
+// This module validates, decides merge/replace outcomes and runs it all in one transaction.
 import { APP_DISPLAY_NAME, EXPORT_APP_ID, EXPORT_FORMAT_VERSION } from '@shared/constants'
 import { exportFileSchema } from '@shared/schemas'
 import type { ExportFile, ImportResult, Tag, Task } from '@shared/types'
 import type { Repos } from '../db'
+import { createImportRepo } from '../db/importRepo'
 
 export class ImportError extends Error {
   constructor(message: string) {
@@ -67,11 +68,6 @@ function firstDuplicate(ids: string[]): string | null {
   return null
 }
 
-interface ExistingTaskRow {
-  id: string
-  updated_at: number
-}
-
 /**
  * Applies an import in one transaction.
  * - merge: tags matched by id, then case-insensitively by name (matched-by-id tags take the
@@ -87,6 +83,7 @@ export function applyImport(
   mode: 'merge' | 'replace',
 ): Omit<ImportResult, 'backupPath'> {
   const { db } = repos
+  const rows = createImportRepo(db)
   const result = {
     mode,
     tasksAdded: 0,
@@ -97,9 +94,7 @@ export function applyImport(
   }
 
   db.transaction(() => {
-    if (mode === 'replace') {
-      db.exec('DELETE FROM task_tags; DELETE FROM tasks; DELETE FROM tags;')
-    }
+    if (mode === 'replace') rows.deleteAll()
 
     // --- tags: file id → local id
     const tagIdMap = new Map<string, string>()
@@ -110,7 +105,7 @@ export function applyImport(
         const clash = repos.tags.findByName(t.name)
         const name = clash && clash.id !== byId.id ? byId.name : t.name
         if (name !== byId.name || t.color !== byId.color) {
-          db.run('UPDATE tags SET name = ?, color = ? WHERE id = ?', [name, t.color, byId.id])
+          rows.setTagNameAndColor(byId.id, name, t.color)
           result.tagsUpdated++
         }
         continue
@@ -120,12 +115,7 @@ export function applyImport(
         tagIdMap.set(t.id, byName.id)
         continue
       }
-      db.run('INSERT INTO tags (id, name, color, created_at) VALUES (?, ?, ?, ?)', [
-        t.id,
-        t.name.trim(),
-        t.color,
-        t.createdAt,
-      ])
+      rows.insertTag(t)
       tagIdMap.set(t.id, t.id)
       result.tagsAdded++
     }
@@ -135,46 +125,15 @@ export function applyImport(
       const tagIds = [
         ...new Set(t.tagIds.map((id) => tagIdMap.get(id) ?? (repos.tags.get(id) ? id : null))),
       ].filter((id): id is string => id !== null)
-      const existing = db.get<ExistingTaskRow>('SELECT id, updated_at FROM tasks WHERE id = ?', [
-        t.id,
-      ])
-      if (existing && t.updatedAt <= existing.updated_at) {
+      const existingUpdatedAt = rows.taskUpdatedAt(t.id)
+      if (existingUpdatedAt !== null && t.updatedAt <= existingUpdatedAt) {
         result.tasksSkipped++
         continue
       }
-      const values = [
-        t.title.trim() || 'Untitled',
-        t.description,
-        t.status,
-        t.priority,
-        t.startDate,
-        t.dueDate,
-        t.position,
-        t.createdAt,
-        t.updatedAt,
-        t.status === 'done' ? (t.completedAt ?? t.updatedAt) : null,
-      ]
-      if (existing) {
-        db.run(
-          `UPDATE tasks SET title = ?, description = ?, status = ?, priority = ?, start_date = ?,
-             due_date = ?, position = ?, created_at = ?, updated_at = ?, completed_at = ?,
-             deleted_at = NULL WHERE id = ?`,
-          [...values, t.id],
-        )
-        db.run('DELETE FROM task_tags WHERE task_id = ?', [t.id])
-        result.tasksUpdated++
-      } else {
-        db.run(
-          `INSERT INTO tasks (title, description, status, priority, start_date, due_date, position,
-             created_at, updated_at, completed_at, deleted_at, id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
-          [...values, t.id],
-        )
-        result.tasksAdded++
-      }
-      for (const tagId of tagIds) {
-        db.run('INSERT OR IGNORE INTO task_tags (task_id, tag_id) VALUES (?, ?)', [t.id, tagId])
-      }
+      rows.writeTask(t, existingUpdatedAt !== null)
+      rows.replaceTaskTags(t.id, tagIds)
+      if (existingUpdatedAt !== null) result.tasksUpdated++
+      else result.tasksAdded++
     }
   })
   return result
