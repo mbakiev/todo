@@ -18,6 +18,7 @@ import { installAppMenu } from './menu'
 import { configureUserDataDir, getAppPaths, isDev, isTestRun } from './paths'
 import { applyLaunchAtLogin, wasLaunchedAtLogin } from './services/autoLaunch'
 import { startAutomaticBackups } from './services/backup'
+import { createQuitGate } from './quitGate'
 import { openDatabaseWithRecovery } from './startup'
 import { installTestHook, registerGlobalShortcuts, unregisterGlobalShortcuts } from './shortcuts'
 import { createTray, destroyTray } from './tray'
@@ -78,6 +79,19 @@ async function bootstrap(): Promise<void> {
   let quickAddWindow: BrowserWindow | null = null
   let lastSettings = repos.settings.get()
 
+  // Every quit is held until the main window has saved pending edits (bounded by a timeout),
+  // and the DB closes only after that — also when quit is requested again meanwhile.
+  let stopBackups = (): void => {}
+  const quitGate = createQuitGate({
+    flush: () => requestRendererFlush(getMainWindow()),
+    quit: () => app.quit(),
+    finalize: () => {
+      stopBackups()
+      unregisterGlobalShortcuts()
+      destroyTray()
+      repos.db.close()
+    },
+  })
   const ctx: AppContext = {
     repos,
     paths,
@@ -94,20 +108,21 @@ async function bootstrap(): Promise<void> {
     },
     broadcastShortcutStatus: (status: ShortcutStatus) =>
       broadcast(IPC.events.shortcutStatusChanged, status),
+    sessionEnding: () => {
+      ctx.quitting = true
+      quitGate.sessionEnding()
+    },
+    sessionEnded: () => quitGate.finalize(),
   }
 
-  // Quitting must never be blocked by the hide-on-close handlers. The first quit attempt
-  // is held until the main window has saved pending edits (bounded by a timeout).
-  let flushedForQuit = false
   app.on('before-quit', (event) => {
+    // Quitting must never be blocked by the hide-on-close handlers.
     ctx.quitting = true
-    if (flushedForQuit) return
-    flushedForQuit = true
-    const win = getMainWindow()
-    if (!win) return
-    event.preventDefault()
-    void requestRendererFlush(win).then(() => app.quit())
+    if (quitGate.beforeQuit()) event.preventDefault()
   })
+  app.on('will-quit', () => quitGate.finalize())
+  // `kill` / Ctrl+C / a service manager: quit through the same gate.
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) process.on(signal, () => app.quit())
   powerMonitor.on('shutdown', () => {
     ctx.quitting = true
   })
@@ -122,7 +137,7 @@ async function bootstrap(): Promise<void> {
   createTray(ctx)
   registerGlobalShortcuts(ctx, lastSettings.shortcuts)
   applyLaunchAtLogin(ctx, lastSettings.launchAtLogin)
-  const stopBackups = startAutomaticBackups(ctx)
+  stopBackups = startAutomaticBackups(ctx)
 
   if (isTestRun) {
     installTestHook({
@@ -145,13 +160,6 @@ async function bootstrap(): Promise<void> {
 
   // The app keeps running in the tray when every window is hidden/closed.
   app.on('window-all-closed', () => {})
-
-  app.on('will-quit', () => {
-    stopBackups()
-    unregisterGlobalShortcuts()
-    destroyTray()
-    repos.db.close()
-  })
 }
 
 function applySettingsSideEffects(ctx: AppContext, prev: Settings, next: Settings): void {

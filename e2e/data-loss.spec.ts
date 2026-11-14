@@ -96,3 +96,40 @@ test('a renderer that never answers cannot hang quit', async () => {
   shell = undefined
   expect(Date.now() - started).toBeLessThan(6000)
 })
+
+/** Waits until the app process has exited (it quit on its own). */
+async function waitForExit(s: ShellApp): Promise<void> {
+  const proc = s.app.process()
+  if (proc.exitCode !== null) return
+  await new Promise<void>((done) => proc.once('exit', () => done()))
+}
+
+test('a second quit request while the flush is running cannot close the DB early', async () => {
+  const userData = tempUserData()
+  shell = await launchShell({ userData, seed: true })
+  await openTask(shell.page, TASK)
+  await typeDescription(shell.page, ' double-quit')
+  const s = shell
+  shell = undefined
+  // Two quits back to back (e.g. Cmd+Q twice, or tray Quit then a logout signal).
+  await s.app.evaluate(({ app }) => {
+    app.quit()
+    app.quit()
+  })
+  await waitForExit(s)
+  shell = await launchShell({ userData })
+  expect((await dbTasks(shell.page)).some((t) => t.description.includes('double-quit'))).toBe(true)
+})
+
+test('SIGTERM saves pending edits before exiting', async () => {
+  const userData = tempUserData()
+  shell = await launchShell({ userData, seed: true })
+  await openTask(shell.page, TASK)
+  await typeTitle(shell.page, ' sigterm')
+  const s = shell
+  shell = undefined
+  s.app.process().kill('SIGTERM')
+  await waitForExit(s)
+  shell = await launchShell({ userData })
+  expect((await dbTasks(shell.page)).some((t) => t.title.includes('sigterm'))).toBe(true)
+})

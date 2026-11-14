@@ -116,12 +116,13 @@ export function createMainWindow(
       hideMainWindow(win)
     }
   })
-  // Windows shutdown / logoff does not emit before-quit: never block it.
-  const endingSession = (): void => {
-    ctx.quitting = true
-  }
-  win.on('query-session-end', endingSession)
-  win.on('session-end', endingSession)
+  // Windows shutdown / logoff emits neither before-quit nor will-quit: never block it, save
+  // pending edits as soon as it is announced and close the DB before the process is killed.
+  win.on('query-session-end', () => ctx.sessionEnding())
+  win.on('session-end', () => {
+    ctx.sessionEnding()
+    ctx.sessionEnded()
+  })
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null
   })
