@@ -1,0 +1,11 @@
+out
+dist
+release
+node_modules
+package-lock.json
+coverage
+test-results
+playwright-report
+e2e/screenshots
+docs
+*.md
