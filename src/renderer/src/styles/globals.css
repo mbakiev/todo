@@ -1,0 +1,277 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+/* Dark mode is class-based: <html class="dark"> is set from settings.theme (system|light|dark). */
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Design tokens (spec §10): zinc neutrals, a single indigo accent, system font,
+ * priority colours (slate / blue / amber / red) and an 8-colour soft tag palette.
+ * Use the semantic utilities (bg-background, text-muted-foreground, text-priority-high,
+ * bg-tag-blue text-tag-blue-fg, text-overdue …) — never raw palette colours in features.
+ */
+:root {
+  --radius: 0.5rem;
+
+  --background: var(--color-white);
+  --foreground: var(--color-zinc-900);
+  --card: var(--color-white);
+  --card-foreground: var(--color-zinc-900);
+  --popover: var(--color-white);
+  --popover-foreground: var(--color-zinc-900);
+  --primary: var(--color-indigo-600);
+  --primary-foreground: var(--color-white);
+  --secondary: var(--color-zinc-100);
+  --secondary-foreground: var(--color-zinc-900);
+  --muted: var(--color-zinc-100);
+  --muted-foreground: var(--color-zinc-500);
+  --accent: var(--color-zinc-100);
+  --accent-foreground: var(--color-zinc-900);
+  --destructive: var(--color-red-600);
+  --destructive-foreground: var(--color-white);
+  --border: var(--color-zinc-200);
+  --input: var(--color-zinc-200);
+  --ring: var(--color-indigo-500);
+
+  /* App chrome */
+  --sidebar: var(--color-zinc-50);
+  --sidebar-foreground: var(--color-zinc-700);
+  --sidebar-accent: var(--color-zinc-200);
+  --sidebar-accent-foreground: var(--color-zinc-900);
+  --sidebar-border: var(--color-zinc-200);
+  --column: var(--color-zinc-50);
+  --selection: color-mix(in oklab, var(--color-indigo-500) 12%, transparent);
+
+  /* Priority (1 low … 4 critical) */
+  --priority-low: var(--color-slate-500);
+  --priority-medium: var(--color-blue-500);
+  --priority-high: var(--color-amber-500);
+  --priority-critical: var(--color-red-500);
+
+  /* Status */
+  --status-not-started: var(--color-zinc-400);
+  --status-in-progress: var(--color-indigo-500);
+  --status-blocked: var(--color-orange-500);
+  --status-done: var(--color-emerald-500);
+
+  /* Date states */
+  --overdue: var(--color-red-600);
+  --due-today: var(--color-amber-600);
+
+  /* Tag palette: soft background, readable foreground, solid dot */
+  --tag-slate: var(--color-slate-100);
+  --tag-slate-fg: var(--color-slate-700);
+  --tag-slate-dot: var(--color-slate-400);
+  --tag-red: var(--color-red-100);
+  --tag-red-fg: var(--color-red-700);
+  --tag-red-dot: var(--color-red-500);
+  --tag-orange: var(--color-orange-100);
+  --tag-orange-fg: var(--color-orange-700);
+  --tag-orange-dot: var(--color-orange-500);
+  --tag-amber: var(--color-amber-100);
+  --tag-amber-fg: var(--color-amber-800);
+  --tag-amber-dot: var(--color-amber-500);
+  --tag-green: var(--color-green-100);
+  --tag-green-fg: var(--color-green-700);
+  --tag-green-dot: var(--color-green-500);
+  --tag-teal: var(--color-teal-100);
+  --tag-teal-fg: var(--color-teal-700);
+  --tag-teal-dot: var(--color-teal-500);
+  --tag-blue: var(--color-blue-100);
+  --tag-blue-fg: var(--color-blue-700);
+  --tag-blue-dot: var(--color-blue-500);
+  --tag-violet: var(--color-violet-100);
+  --tag-violet-fg: var(--color-violet-700);
+  --tag-violet-dot: var(--color-violet-500);
+}
+
+.dark {
+  --background: var(--color-zinc-950);
+  --foreground: var(--color-zinc-100);
+  --card: var(--color-zinc-900);
+  --card-foreground: var(--color-zinc-100);
+  --popover: var(--color-zinc-900);
+  --popover-foreground: var(--color-zinc-100);
+  --primary: var(--color-indigo-500);
+  --primary-foreground: var(--color-white);
+  --secondary: var(--color-zinc-800);
+  --secondary-foreground: var(--color-zinc-100);
+  --muted: var(--color-zinc-800);
+  --muted-foreground: var(--color-zinc-400);
+  --accent: var(--color-zinc-800);
+  --accent-foreground: var(--color-zinc-100);
+  --destructive: var(--color-red-500);
+  --destructive-foreground: var(--color-white);
+  --border: color-mix(in oklab, var(--color-zinc-700) 70%, transparent);
+  --input: var(--color-zinc-800);
+  --ring: var(--color-indigo-400);
+
+  --sidebar: var(--color-zinc-900);
+  --sidebar-foreground: var(--color-zinc-300);
+  --sidebar-accent: var(--color-zinc-800);
+  --sidebar-accent-foreground: var(--color-zinc-50);
+  --sidebar-border: color-mix(in oklab, var(--color-zinc-700) 60%, transparent);
+  --column: color-mix(in oklab, var(--color-zinc-900) 60%, var(--color-zinc-950));
+  --selection: color-mix(in oklab, var(--color-indigo-400) 18%, transparent);
+
+  --priority-low: var(--color-slate-400);
+  --priority-medium: var(--color-blue-400);
+  --priority-high: var(--color-amber-400);
+  --priority-critical: var(--color-red-400);
+
+  --status-not-started: var(--color-zinc-500);
+  --status-in-progress: var(--color-indigo-400);
+  --status-blocked: var(--color-orange-400);
+  --status-done: var(--color-emerald-400);
+
+  --overdue: var(--color-red-400);
+  --due-today: var(--color-amber-400);
+
+  --tag-slate: color-mix(in oklab, var(--color-slate-400) 18%, transparent);
+  --tag-slate-fg: var(--color-slate-300);
+  --tag-red: color-mix(in oklab, var(--color-red-500) 20%, transparent);
+  --tag-red-fg: var(--color-red-300);
+  --tag-orange: color-mix(in oklab, var(--color-orange-500) 20%, transparent);
+  --tag-orange-fg: var(--color-orange-300);
+  --tag-amber: color-mix(in oklab, var(--color-amber-500) 20%, transparent);
+  --tag-amber-fg: var(--color-amber-300);
+  --tag-green: color-mix(in oklab, var(--color-green-500) 20%, transparent);
+  --tag-green-fg: var(--color-green-300);
+  --tag-teal: color-mix(in oklab, var(--color-teal-500) 20%, transparent);
+  --tag-teal-fg: var(--color-teal-300);
+  --tag-blue: color-mix(in oklab, var(--color-blue-500) 20%, transparent);
+  --tag-blue-fg: var(--color-blue-300);
+  --tag-violet: color-mix(in oklab, var(--color-violet-500) 22%, transparent);
+  --tag-violet-fg: var(--color-violet-300);
+}
+
+@theme inline {
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI', system-ui, Roboto,
+    'Helvetica Neue', Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Cascadia Mono', monospace;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-column: var(--column);
+  --color-selection: var(--selection);
+
+  --color-priority-low: var(--priority-low);
+  --color-priority-medium: var(--priority-medium);
+  --color-priority-high: var(--priority-high);
+  --color-priority-critical: var(--priority-critical);
+
+  --color-status-not-started: var(--status-not-started);
+  --color-status-in-progress: var(--status-in-progress);
+  --color-status-blocked: var(--status-blocked);
+  --color-status-done: var(--status-done);
+
+  --color-overdue: var(--overdue);
+  --color-due-today: var(--due-today);
+
+  --color-tag-slate: var(--tag-slate);
+  --color-tag-slate-fg: var(--tag-slate-fg);
+  --color-tag-slate-dot: var(--tag-slate-dot);
+  --color-tag-red: var(--tag-red);
+  --color-tag-red-fg: var(--tag-red-fg);
+  --color-tag-red-dot: var(--tag-red-dot);
+  --color-tag-orange: var(--tag-orange);
+  --color-tag-orange-fg: var(--tag-orange-fg);
+  --color-tag-orange-dot: var(--tag-orange-dot);
+  --color-tag-amber: var(--tag-amber);
+  --color-tag-amber-fg: var(--tag-amber-fg);
+  --color-tag-amber-dot: var(--tag-amber-dot);
+  --color-tag-green: var(--tag-green);
+  --color-tag-green-fg: var(--tag-green-fg);
+  --color-tag-green-dot: var(--tag-green-dot);
+  --color-tag-teal: var(--tag-teal);
+  --color-tag-teal-fg: var(--tag-teal-fg);
+  --color-tag-teal-dot: var(--tag-teal-dot);
+  --color-tag-blue: var(--tag-blue);
+  --color-tag-blue-fg: var(--tag-blue-fg);
+  --color-tag-blue-dot: var(--tag-blue-dot);
+  --color-tag-violet: var(--tag-violet);
+  --color-tag-violet-fg: var(--tag-violet-fg);
+  --color-tag-violet-dot: var(--tag-violet-dot);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+    /* 13px base (spec §10: 13–14px). Components default to text-sm (14px) where shadcn sets it. */
+    font-size: 13px;
+    line-height: 1.45;
+    overflow: hidden;
+    user-select: none;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Text the user is meant to select stays selectable. */
+  input,
+  textarea,
+  [contenteditable='true'],
+  .selectable {
+    user-select: text;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--color-indigo-500) 30%, transparent);
+  }
+  button,
+  [role='button'] {
+    cursor: default;
+  }
+}
+
+@layer utilities {
+  /* Window drag regions for the macOS hidden-inset title bar (no-op elsewhere). */
+  .app-drag {
+    -webkit-app-region: drag;
+  }
+  .app-no-drag {
+    -webkit-app-region: no-drag;
+  }
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+}

@@ -1,0 +1,66 @@
+// Ephemeral UI state shared across the shell and features.
+import { create } from 'zustand'
+import type { LocalDate, Priority, Status, ViewId } from '@shared/types'
+import { EMPTY_FILTER, type TaskFilter } from '@shared/views'
+
+/** Values prefilled when the new-task dialog opens (e.g. clicking an empty calendar day). */
+export interface NewTaskPrefill {
+  dueDate?: LocalDate | null
+  startDate?: LocalDate | null
+  status?: Status
+  priority?: Priority
+  tagIds?: string[]
+}
+
+export interface UiState {
+  activeView: ViewId
+  /** Task shown in the detail panel; null = panel closed. */
+  selectedTaskId: string | null
+  filter: TaskFilter
+  newTaskDialog: { open: boolean; prefill: NewTaskPrefill }
+  settingsOpen: boolean
+  /** Incremented to ask the toolbar search box to focus (Cmd/Ctrl+F). */
+  searchFocusRequest: number
+
+  setActiveView(view: ViewId): void
+  selectTask(id: string | null): void
+  setSearchText(text: string): void
+  toggleFilterTag(tagId: string): void
+  setFilterTags(tagIds: string[]): void
+  toggleFilterPriority(p: Priority): void
+  setFilterPriorities(priorities: Priority[]): void
+  clearFilter(): void
+  openNewTaskDialog(prefill?: NewTaskPrefill): void
+  closeNewTaskDialog(): void
+  setSettingsOpen(open: boolean): void
+  requestSearchFocus(): void
+}
+
+function toggle<T>(list: readonly T[], item: T): T[] {
+  return list.includes(item) ? list.filter((x) => x !== item) : [...list, item]
+}
+
+export const useUiStore = create<UiState>()((set) => ({
+  activeView: 'today',
+  selectedTaskId: null,
+  filter: EMPTY_FILTER,
+  newTaskDialog: { open: false, prefill: {} },
+  settingsOpen: false,
+  searchFocusRequest: 0,
+
+  setActiveView: (activeView) => set({ activeView }),
+  selectTask: (selectedTaskId) => set({ selectedTaskId }),
+  setSearchText: (text) => set((s) => ({ filter: { ...s.filter, text } })),
+  toggleFilterTag: (tagId) =>
+    set((s) => ({ filter: { ...s.filter, tagIds: toggle(s.filter.tagIds, tagId) } })),
+  setFilterTags: (tagIds) => set((s) => ({ filter: { ...s.filter, tagIds } })),
+  toggleFilterPriority: (p) =>
+    set((s) => ({ filter: { ...s.filter, priorities: toggle(s.filter.priorities, p) } })),
+  setFilterPriorities: (priorities) => set((s) => ({ filter: { ...s.filter, priorities } })),
+  clearFilter: () => set({ filter: EMPTY_FILTER }),
+  openNewTaskDialog: (prefill = {}) => set({ newTaskDialog: { open: true, prefill } }),
+  closeNewTaskDialog: () =>
+    set((s) => ({ newTaskDialog: { open: false, prefill: s.newTaskDialog.prefill } })),
+  setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
+  requestSearchFocus: () => set((s) => ({ searchFocusRequest: s.searchFocusRequest + 1 })),
+}))
