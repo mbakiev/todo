@@ -1,6 +1,6 @@
 import { toast } from 'sonner'
 import { create } from 'zustand'
-import { DEFAULT_SETTINGS } from '@shared/constants'
+import { defaultSettings } from '@shared/constants'
 import type { SettingsPatch } from '@shared/schemas'
 import type { Settings } from '@shared/types'
 import { api } from '@/lib/api'
@@ -42,8 +42,9 @@ const replay = (base: Settings, ops: SettingsState['ops']): Settings =>
   ops.reduce((acc, op) => merge(acc, op.patch), base)
 
 export const useSettingsStore = create<SettingsState>()((set) => ({
-  settings: DEFAULT_SETTINGS,
-  confirmed: DEFAULT_SETTINGS,
+  // Placeholder until load() returns the stored settings (nothing renders before that).
+  settings: defaultSettings('darwin'),
+  confirmed: defaultSettings('darwin'),
   ops: [],
   loaded: false,
 

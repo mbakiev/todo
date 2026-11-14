@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS } from './constants'
+import { defaultSettings, defaultShortcuts } from './constants'
 import {
   exportFileSchema,
   settingsPatchSchema,
@@ -48,7 +48,7 @@ describe('schemas', () => {
     expect(tagCreateInputSchema.safeParse({ name: 'x', color: 'pink' }).success).toBe(false)
   })
   it('settings: defaults are valid, patch is partial', () => {
-    expect(settingsSchema.parse(DEFAULT_SETTINGS)).toEqual(DEFAULT_SETTINGS)
+    expect(settingsSchema.parse(defaultSettings('darwin'))).toEqual(defaultSettings('darwin'))
     expect(settingsPatchSchema.parse({ boardSort: { week: 'due' } })).toEqual({
       boardSort: { week: 'due' },
     })
@@ -79,5 +79,23 @@ describe('schemas', () => {
     }
     expect(exportFileSchema.safeParse(file).success).toBe(true)
     expect(exportFileSchema.safeParse({ ...file, formatVersion: 2 }).success).toBe(false)
+  })
+})
+
+describe('defaultShortcuts', () => {
+  it('macOS keeps ⌥⇧N / ⌥⇧T; Windows and Linux use Ctrl+Alt (no layout-switch clash)', () => {
+    expect(defaultShortcuts('darwin')).toEqual({
+      quickAdd: 'Alt+Shift+N',
+      toggleApp: 'Alt+Shift+T',
+    })
+    expect(defaultShortcuts('win32')).toEqual({
+      quickAdd: 'Control+Alt+N',
+      toggleApp: 'Control+Alt+T',
+    })
+    expect(defaultShortcuts('linux')).toEqual(defaultShortcuts('win32'))
+    for (const p of ['darwin', 'win32', 'linux'] as const) {
+      expect(settingsSchema.parse(defaultSettings(p))).toEqual(defaultSettings(p))
+      expect(defaultSettings(p).shortcuts).toEqual(defaultShortcuts(p))
+    }
   })
 })

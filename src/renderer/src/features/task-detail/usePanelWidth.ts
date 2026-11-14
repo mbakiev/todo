@@ -1,7 +1,11 @@
 // Detail panel width: persisted in settings.detailPanelWidth, drag-resizable from the left edge,
 // clamped so the main view always keeps usable space.
 import { useEffect, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { DEFAULT_SETTINGS, DETAIL_PANEL_MAX_WIDTH, DETAIL_PANEL_MIN_WIDTH } from '@shared/constants'
+import {
+  DEFAULT_DETAIL_PANEL_WIDTH,
+  DETAIL_PANEL_MAX_WIDTH,
+  DETAIL_PANEL_MIN_WIDTH,
+} from '@shared/constants'
 import { useSettings } from '@/stores/selectors'
 import { useSettingsStore } from '@/stores/settingsStore'
 
@@ -73,6 +77,6 @@ export function usePanelWidth(): PanelWidth {
     width,
     resizing: dragWidth !== null,
     onResizeStart,
-    reset: () => persist(DEFAULT_SETTINGS.detailPanelWidth),
+    reset: () => persist(DEFAULT_DETAIL_PANEL_WIDTH),
   }
 }

@@ -1,4 +1,4 @@
-import type { BoardScope, Priority, Settings, Status, TagColor, ViewId } from './types'
+import type { BoardScope, Platform, Priority, Settings, Status, TagColor, ViewId } from './types'
 
 export const APP_DISPLAY_NAME = "Martin's To Dos"
 export const EXPORT_APP_ID = 'martin-todos'
@@ -97,16 +97,31 @@ export const GLOBAL_SHORTCUT_LABELS: Record<keyof Settings['shortcuts'], string>
   toggleApp: 'Show / hide window',
 }
 
-export const DEFAULT_SETTINGS: Settings = {
+export const DEFAULT_DETAIL_PANEL_WIDTH = 480
+
+/**
+ * Default global shortcuts — the one place they are resolved. macOS: ⌥⇧N / ⌥⇧T. Windows and
+ * Linux: Ctrl+Alt+N / Ctrl+Alt+T (left Alt+Shift is Windows' "switch keyboard layout"
+ * hotkey, so Alt+Shift combos can flip the layout there). Only fills in values that were
+ * never stored: existing settings are not rewritten.
+ */
+export function defaultShortcuts(platform: Platform): Settings['shortcuts'] {
+  return platform === 'darwin'
+    ? { quickAdd: 'Alt+Shift+N', toggleApp: 'Alt+Shift+T' }
+    : { quickAdd: 'Control+Alt+N', toggleApp: 'Control+Alt+T' }
+}
+
+/** Default settings for a platform (only the global shortcuts differ). */
+export function defaultSettings(platform: Platform): Settings {
+  return { ...PLATFORM_NEUTRAL_DEFAULTS, shortcuts: defaultShortcuts(platform) }
+}
+
+const PLATFORM_NEUTRAL_DEFAULTS: Omit<Settings, 'shortcuts'> = {
   theme: 'system',
   weekStartsOn: 1,
-  shortcuts: {
-    toggleApp: 'Alt+Shift+T',
-    quickAdd: 'Alt+Shift+N',
-  },
   launchAtLogin: false,
   boardSort: { today: 'priority', week: 'priority', everything: 'priority' },
-  detailPanelWidth: 480,
+  detailPanelWidth: DEFAULT_DETAIL_PANEL_WIDTH,
   lastView: 'today',
   windowBounds: null,
 }

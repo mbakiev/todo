@@ -16,16 +16,22 @@ export interface OpenDatabaseOptions {
   path: string
   /** Injectable clock for tests. */
   now?: () => number
+  /** Whose default settings fill in unset values (tests); defaults to this machine's. */
+  platform?: NodeJS.Platform
 }
 
 /** Opens the DB, runs migrations, purges expired soft-deletes and builds the repos. */
-export function openDatabase({ path, now = Date.now }: OpenDatabaseOptions): Repos {
+export function openDatabase({
+  path,
+  now = Date.now,
+  platform = process.platform,
+}: OpenDatabaseOptions): Repos {
   const db = openDb({ path })
   try {
     migrate(db)
     const tags = createTagsRepo(db, now)
     const tasks = createTasksRepo(db, tags, now)
-    const settings = createSettingsRepo(db)
+    const settings = createSettingsRepo(db, platform)
     tasks.purgeDeleted()
     return { db, tasks, tags, settings }
   } catch (err) {

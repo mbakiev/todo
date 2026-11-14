@@ -1,13 +1,13 @@
 import { AlertTriangle, CheckCircle2, RotateCcw, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { acceleratorsEqual } from '@shared/accelerators'
-import { DEFAULT_SETTINGS, GLOBAL_SHORTCUT_LABELS as LABELS } from '@shared/constants'
+import { defaultShortcuts, GLOBAL_SHORTCUT_LABELS as LABELS } from '@shared/constants'
 import type { Settings, ShortcutStatus } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { api } from '@/lib/api'
 import { appInfo } from '@/lib/platform'
-import { shortcutParts } from '@/lib/shortcuts'
+import { formatShortcut, shortcutParts } from '@/lib/shortcuts'
 import { useSettings } from '@/stores/selectors'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { KeyCombo, SectionHeading } from './parts'
@@ -117,7 +117,8 @@ export function ShortcutsSection() {
         <div className="divide-y">
           {GLOBAL.map(({ name, label, description }) => {
             const value = settings.shortcuts[name]
-            const isDefault = value === DEFAULT_SETTINGS.shortcuts[name]
+            const def = defaultShortcuts(platform)[name]
+            const isDefault = acceleratorsEqual(value, def, platform)
             const s = status?.[name]
             const failing = !!s?.error && s.accelerator === value
             return (
@@ -150,7 +151,6 @@ export function ShortcutsSection() {
                         aria-label={`Reset ${label} to default`}
                         disabled={isDefault}
                         onClick={() => {
-                          const def = DEFAULT_SETTINGS.shortcuts[name]
                           if (validateFor(name)(def)) return
                           setShortcut(name, def)
                         }}
@@ -158,7 +158,7 @@ export function ShortcutsSection() {
                         <RotateCcw className="size-3.5" />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Reset to default</TooltipContent>
+                    <TooltipContent>Reset to default · {formatShortcut(def)}</TooltipContent>
                   </Tooltip>
                   <Tooltip>
                     <TooltipTrigger asChild>

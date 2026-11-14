@@ -1,11 +1,11 @@
-import { DEFAULT_SETTINGS } from '@shared/constants'
+import { defaultSettings } from '@shared/constants'
 import { settingsSchema, type SettingsPatchParsed } from '@shared/schemas'
-import type { Settings } from '@shared/types'
+import type { Platform, Settings } from '@shared/types'
 import type { Db } from './connection'
 import { RepoError } from './errors'
 
 type SettingsKey = keyof Settings
-const KEYS = Object.keys(DEFAULT_SETTINGS) as SettingsKey[]
+const KEYS = Object.keys(defaultSettings('darwin')) as SettingsKey[]
 
 /** Already-validated partial settings; `shortcuts` / `boardSort` may be partial too. */
 export type SettingsPatchParams = SettingsPatchParsed
@@ -16,13 +16,15 @@ export interface SettingsRepo {
   set(patch: SettingsPatchParams): Settings
 }
 
-export function createSettingsRepo(db: Db): SettingsRepo {
+/** `platform` picks the defaults for values never stored (the global shortcuts differ). */
+export function createSettingsRepo(db: Db, platform: Platform = process.platform): SettingsRepo {
+  const defaults = defaultSettings(platform)
   function read(): Settings {
     const rows = db.all<{ key: string; value: string }>('SELECT key, value FROM settings')
     const stored = new Map(rows.map((r) => [r.key, r.value]))
     const out: Record<string, unknown> = {}
     for (const key of KEYS) {
-      const fallback = DEFAULT_SETTINGS[key]
+      const fallback = defaults[key]
       const raw = stored.get(key)
       if (raw === undefined) {
         out[key] = fallback

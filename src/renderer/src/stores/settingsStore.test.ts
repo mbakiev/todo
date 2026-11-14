@@ -1,5 +1,5 @@
 import { vi } from 'vitest'
-import { DEFAULT_SETTINGS } from '@shared/constants'
+import { defaultSettings } from '@shared/constants'
 import type { Settings } from '@shared/types'
 import { installMockApi } from '@/test/mockApi'
 import { useSettingsStore } from './settingsStore'
@@ -18,8 +18,8 @@ function deferred<T>() {
 
 beforeEach(() =>
   useSettingsStore.setState({
-    settings: DEFAULT_SETTINGS,
-    confirmed: DEFAULT_SETTINGS,
+    settings: defaultSettings('darwin'),
+    confirmed: defaultSettings('darwin'),
     ops: [],
     loaded: true,
   }),
@@ -35,7 +35,7 @@ describe('settingsStore optimistic updates', () => {
     const p1 = useSettingsStore.getState().set({ theme: 'dark' })
     const p2 = useSettingsStore.getState().set({ lastView: 'list' })
     expect(cur()).toMatchObject({ theme: 'dark', lastView: 'list' })
-    const saved = { ...DEFAULT_SETTINGS, lastView: 'list' as const }
+    const saved = { ...defaultSettings('darwin'), lastView: 'list' as const }
     d2.resolve(saved)
     await p2
     expect(cur().theme).toBe('dark') // still pending
@@ -51,7 +51,7 @@ describe('settingsStore optimistic updates', () => {
     installMockApi({ settings: { set } })
     const p1 = useSettingsStore.getState().set({ theme: 'dark' })
     const p2 = useSettingsStore.getState().set({ weekStartsOn: 0 })
-    const after1 = { ...DEFAULT_SETTINGS, theme: 'dark' as const }
+    const after1 = { ...defaultSettings('darwin'), theme: 'dark' as const }
     useSettingsStore.getState().apply(after1)
     expect(cur().weekStartsOn).toBe(0)
     d1.resolve(after1)

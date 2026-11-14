@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { DEFAULT_SETTINGS, POSITION_EPSILON, SOFT_DELETE_RETENTION_MS } from '@shared/constants'
+import { defaultSettings, POSITION_EPSILON, SOFT_DELETE_RETENTION_MS } from '@shared/constants'
 import { openDb } from './connection'
 import { openDatabase, type Repos } from './index'
 import { migrate } from './migrate'
@@ -300,8 +300,32 @@ describe('tagsRepo', () => {
 })
 
 describe('settingsRepo', () => {
+  it('global shortcut defaults are per platform; stored ones are never rewritten', () => {
+    const mac = openDatabase({ path: ':memory:', platform: 'darwin' })
+    expect(mac.settings.get().shortcuts).toEqual({
+      quickAdd: 'Alt+Shift+N',
+      toggleApp: 'Alt+Shift+T',
+    })
+    for (const platform of ['win32', 'linux'] as const) {
+      const other = openDatabase({ path: ':memory:', platform })
+      expect(other.settings.get().shortcuts).toEqual({
+        quickAdd: 'Control+Alt+N',
+        toggleApp: 'Control+Alt+T',
+      })
+      // A combo stored earlier (e.g. the old Alt+Shift default) stays as it is; only the
+      // unset one comes from the platform default.
+      other.settings.set({ shortcuts: { quickAdd: 'Alt+Shift+N' } })
+      expect(other.settings.get().shortcuts).toEqual({
+        quickAdd: 'Alt+Shift+N',
+        toggleApp: 'Control+Alt+T',
+      })
+      other.db.close()
+    }
+    mac.db.close()
+  })
+
   it('returns defaults, merges nested objects, persists', () => {
-    expect(r.settings.get()).toEqual(DEFAULT_SETTINGS)
+    expect(r.settings.get()).toEqual(defaultSettings(process.platform))
     const s = r.settings.set({
       theme: 'dark',
       boardSort: { week: 'manual' },
@@ -309,7 +333,10 @@ describe('settingsRepo', () => {
     })
     expect(s.theme).toBe('dark')
     expect(s.boardSort).toEqual({ today: 'priority', week: 'manual', everything: 'priority' })
-    expect(s.shortcuts).toEqual({ toggleApp: 'Alt+Shift+T', quickAdd: 'Alt+Space' })
+    expect(s.shortcuts).toEqual({
+      toggleApp: defaultSettings(process.platform).shortcuts.toggleApp,
+      quickAdd: 'Alt+Space',
+    })
     expect(r.settings.get()).toEqual(s)
   })
   it('falls back to defaults for corrupt stored values', () => {

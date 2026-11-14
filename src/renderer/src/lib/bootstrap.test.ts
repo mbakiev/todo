@@ -1,5 +1,5 @@
 import { vi } from 'vitest'
-import { DEFAULT_SETTINGS } from '@shared/constants'
+import { defaultSettings } from '@shared/constants'
 import type { DataChange, Settings, Tag, Task } from '@shared/types'
 import { makeTask } from '@shared/test/factories'
 import { EMPTY_FILTER } from '@shared/views'
@@ -53,8 +53,8 @@ beforeEach(() => {
   useTasksStore.setState({ byId: {}, loaded: false, pending: {}, sync: {} })
   useTagsStore.setState({ byId: {}, loaded: false, sync: {} })
   useSettingsStore.setState({
-    settings: DEFAULT_SETTINGS,
-    confirmed: DEFAULT_SETTINGS,
+    settings: defaultSettings('darwin'),
+    confirmed: defaultSettings('darwin'),
     ops: [],
     loaded: false,
   })
@@ -71,12 +71,12 @@ describe('bootstrap', () => {
     expect(listeners.dataChanged).toBeDefined()
     listeners.dataChanged?.({ upsertedTasks: [{ ...a, title: 'edited elsewhere', updatedAt: 11 }] })
     listeners.dataChanged?.({ upsertedTasks: [makeTask({ id: 'b', title: 'created elsewhere' })] })
-    listeners.settingsChanged?.({ ...DEFAULT_SETTINGS, weekStartsOn: 0 })
+    listeners.settingsChanged?.({ ...defaultSettings('darwin'), weekStartsOn: 0 })
     listeners.openTask?.('b')
 
     tasks.resolve([a])
     tags.resolve([])
-    settings.resolve(DEFAULT_SETTINGS)
+    settings.resolve(defaultSettings('darwin'))
     await done
 
     const byId = useTasksStore.getState().byId
@@ -92,7 +92,7 @@ describe('bootstrap', () => {
     const done = bootstrap()
     tasks.resolve([])
     tags.resolve([tag('x'), tag('y'), tag('z')])
-    settings.resolve(DEFAULT_SETTINGS)
+    settings.resolve(defaultSettings('darwin'))
     await done
 
     useUiStore.getState().setFilterTags(['x', 'y', 'z'])
