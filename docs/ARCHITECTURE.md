@@ -316,13 +316,21 @@ Click header to sort; group-by selector (None / Status / Priority); status filte
   a task with one date renders as a chip on that day. Overflow collapses to "+N more"
   with a popover (start-only tasks there carry the muted "Starts <date>" badge).
 - Drag a task to another day to shift its dates (duration preserved). Clicking an empty
-  day opens the new-task dialog with due date prefilled.
+  day opens the new-task dialog with due date prefilled (while the detail panel is open, that
+  click only closes the panel, §7).
 - Completed tasks are dimmed and struck through; toggle to hide them.
 
 ## 7. Task detail panel
 
 Non-modal panel sliding in from the right (~480px, drag-resizable, width persisted); the
-view underneath stays interactive. Esc or the close button dismisses it.
+view underneath stays interactive. Esc, the close button, or a click on empty space in the view
+dismisses it. The last is handled once in the shell (`app/useEmptySpaceDeselect.ts`, decision in
+`app/emptySpace.ts`): a plain primary click whose press and release both land on empty space of
+the view host (not a `[data-task-id]` / `[data-row-id]` task, a control, an overlay, a scrollbar
+or a `[data-no-deselect]` region), with under 4 px of pointer travel, while no menu / popover /
+dialog is open, calls `selectTask(null)` — the same guarded path — and stops that click, so a
+view's own empty-space action (a calendar day's new-task dialog) does not also run. With no task
+open it does nothing.
 
 Contents, top to bottom: title (large inline-editable), property rows — status, priority,
 start date, due date (date pickers with Today / Tomorrow / Next week / Clear presets),
