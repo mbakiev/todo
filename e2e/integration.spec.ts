@@ -275,9 +275,13 @@ test('Esc: a drag or an overlay consumes it before the detail panel', async () =
     await page.mouse.move(box.x + box.width / 2 + i * 10, box.y + box.height / 2)
   await expect(page.getByTestId('timeline-drag-label')).toBeVisible()
   await page.keyboard.press('Escape')
+  await page.waitForTimeout(50)
   await page.mouse.up()
   await expect(panel(page)).toBeVisible()
   await expect(bar).toHaveAttribute('data-start', offsite.startDate ?? '')
+  // Releasing the button after the cancel is not a click: the panel keeps the first task.
+  await page.waitForTimeout(300)
+  await expect(panelTitle(page)).toHaveValue(firstTitle)
 
   // Nothing else open: Esc closes the panel.
   await page.mouse.move(700, 600)

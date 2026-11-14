@@ -148,13 +148,21 @@ export function useBarDrag({
         if (s.active && s.frame === 0) s.frame = requestAnimationFrame(autoScroll)
       }
 
-      const finish = (commit: boolean): void => {
+      /** `buttonDown`: the drag ended (Esc) while the mouse button is still held. */
+      const finish = (commit: boolean, buttonDown = false): void => {
         const wasActive = s.active
         cleanup()
         if (wasActive) {
-          // The click that follows pointerup must not open the detail panel.
+          // The click that follows pointerup must not open the detail panel — also when Esc
+          // cancelled the drag and the button is released later.
           suppressClick.current = true
-          setTimeout(() => (suppressClick.current = false), 0)
+          const release = (): void => {
+            setTimeout(() => (suppressClick.current = false), 0)
+          }
+          if (buttonDown) {
+            window.addEventListener('pointerup', release, { once: true, capture: true })
+            window.addEventListener('pointercancel', release, { once: true, capture: true })
+          } else release()
           if (commit) {
             const next = applyDrag(s.original, s.mode, s.delta, latest.current.range)
             const patch = datesPatch(s.original, next)
@@ -171,7 +179,7 @@ export function useBarDrag({
         // Own Esc while dragging so the shell does not also close the detail panel.
         ev.preventDefault()
         ev.stopPropagation()
-        finish(false)
+        finish(false, true)
       }
 
       function cleanup(): void {
