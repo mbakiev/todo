@@ -2,7 +2,7 @@
 // the header `sticky top`, so vertical scroll is shared and only the grid scrolls sideways.
 // Rows are virtualized; the grid (day lines, weekend shading) is CSS backgrounds.
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { ChevronRight } from 'lucide-react'
+import { AlertCircle, ChevronRight } from 'lucide-react'
 import {
   memo,
   useCallback,
@@ -258,6 +258,7 @@ export function TimelineView() {
                         task={row.task}
                         selected={row.task.id === selectedTaskId}
                         hovered={row.task.id === hoveredId}
+                        today={today}
                         onClick={onRowClick}
                         onHover={setHoveredId}
                       />
@@ -379,10 +380,13 @@ const TaskLabel = memo(function TaskLabel({
   task,
   selected,
   hovered,
+  today,
   onClick,
   onHover,
-}: { task: Task; selected: boolean; hovered: boolean } & RowHandlers) {
+}: { task: Task; selected: boolean; hovered: boolean; today: LocalDate } & RowHandlers) {
   const done = task.status === 'done'
+  // Same overdue look as the calendar: red title + small alert icon (the bar is red-outlined).
+  const overdue = isOverdue(task, today)
   return (
     <TaskContextMenu task={task}>
       <div
@@ -398,9 +402,18 @@ const TaskLabel = memo(function TaskLabel({
         )}
       >
         <StatusIcon status={task.status} />
-        <span className={cn('min-w-0 flex-1 truncate', done && 'text-muted-foreground')}>
+        <span
+          className={cn(
+            'min-w-0 flex-1 truncate',
+            done && 'text-muted-foreground',
+            overdue && 'text-overdue',
+          )}
+        >
           {task.title}
         </span>
+        {overdue && (
+          <AlertCircle aria-label="Overdue" role="img" className="size-3 shrink-0 text-overdue" />
+        )}
         <PriorityIcon priority={task.priority} />
       </div>
     </TaskContextMenu>

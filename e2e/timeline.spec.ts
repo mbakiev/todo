@@ -82,6 +82,18 @@ test('renders seeded bars and clamps a long-overdue task to the left edge', asyn
   await expect(bar(page, expense.id)).toHaveAttribute('data-overdue', 'true')
   await expect(bar(page, expense.id)).not.toHaveAttribute('data-clamped', /.+/)
 
+  // Overdue reads the same in the left pane as in the calendar: red title + alert icon.
+  const label = page.getByTestId('timeline-left-pane').locator(`[data-task-id="${expense.id}"]`)
+  await expect(label.getByRole('img', { name: 'Overdue' })).toBeVisible()
+  await expect(label.getByText('Submit expense report')).toHaveClass(/text-overdue/)
+  const onTime = await taskByTitle(page, 'Plan team offsite logistics')
+  await expect(
+    page
+      .getByTestId('timeline-left-pane')
+      .locator(`[data-task-id="${onTime.id}"]`)
+      .getByRole('img', { name: 'Overdue' }),
+  ).toHaveCount(0)
+
   // Undated tasks are not on the timeline; dated ones are listed in the left pane.
   await expect(page.getByTestId('timeline-left-pane')).not.toContainText('Order new running shoes')
   await expect(page.getByTestId('timeline-left-pane')).toContainText('Plan team offsite logistics')
