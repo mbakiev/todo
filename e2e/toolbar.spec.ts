@@ -163,3 +163,21 @@ test('with a hover tooltip open, one Esc closes the detail panel', async () => {
   await expect(page.getByTestId('task-detail')).toHaveCount(0)
   await expect(page.locator('[data-slot="tooltip-content"]')).toHaveCount(0)
 })
+
+test('Esc while a tooltip is fading out still closes the detail panel', async () => {
+  launched = await launchApp({ seed: true })
+  const { page } = launched
+  await resizeMainWindow(launched.app, 1400, 860)
+  await setPanel(page, true)
+  const trigger = page.getByRole('button', { name: 'New task' })
+  await trigger.hover()
+  await expect(page.locator('[data-slot="tooltip-content"]')).toHaveCount(1)
+  // Leaving the trigger closes the tooltip with an exit animation; it stays in the DOM
+  // (data-state="closed") for a moment. An Esc pressed meanwhile must reach the panel.
+  const box = await trigger.boundingBox()
+  if (!box) throw new Error('trigger not visible')
+  await page.mouse.move(box.x - 200, box.y + 300, { steps: 5 })
+  await expect(page.locator('[data-slot="tooltip-content"][data-state="closed"]')).toHaveCount(1)
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('task-detail')).toHaveCount(0)
+})

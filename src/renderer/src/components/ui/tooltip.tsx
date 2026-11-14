@@ -29,7 +29,7 @@ const NAVIGATION_KEYS = new Set([
 const LAYER_UPDATE_EVENT = 'dismissableLayer.update'
 
 let lastInteractionWasNavigation = false
-/** Close functions of the tooltips that are open right now. */
+/** Close functions of the tooltips that are open or may still be fading out. */
 const openTooltips = new Set<() => void>()
 let listenersInstalled = false
 
@@ -106,17 +106,28 @@ function Tooltip({
   )
 
   const visible = open && !suppressed
+  const visibleRef = React.useRef(visible)
   React.useEffect(() => {
-    if (!visible) return
+    visibleRef.current = visible
+  })
+  // After closing normally (pointer left) the content fades out and stays a dismissable layer
+  // until its exit animation ends, so it would still swallow Esc. Keep it registered until it
+  // has been suppressed (unmounted at once), not just while it is open.
+  const [shown, setShown] = React.useState(false)
+  if (visible && !shown) setShown(true)
+  const registered = visible || (shown && !suppressed)
+  React.useEffect(() => {
+    if (!registered) return
     const close = (): void => {
       setSuppressed(true)
-      setOpen(false)
+      setShown(false)
+      if (visibleRef.current) setOpen(false)
     }
     openTooltips.add(close)
     return () => {
       openTooltips.delete(close)
     }
-  }, [visible, setOpen])
+  }, [registered, setOpen])
 
   return (
     <SuppressedContext.Provider value={suppressed}>
