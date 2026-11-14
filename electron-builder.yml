@@ -19,7 +19,8 @@ files:
   - '!**/*.map'
   - '!node_modules/**'
   - node_modules/zod/**
-# Tray icons, window icon: read from process.resourcesPath (src/main/paths.ts resourcePath).
+# Tray icons, window icons (icon.ico on Windows, icon.png on Linux): read from
+# process.resourcesPath (src/main/paths.ts resourcePath).
 extraResources:
   - from: resources
     to: .

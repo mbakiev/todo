@@ -6,7 +6,8 @@
 // background) — no extra dependencies, works on macOS and Windows. Outputs:
 //   build/icon.png                      1024×1024 app icon (electron-builder derives the .icns)
 //   build/icon.ico                      Windows app + installer icon, 16–256 px, tile-cropped
-//   resources/icon.png                  256×256 window icon (Windows/Linux dev builds)
+//   resources/icon.ico                  the same full-bleed icon for the Windows window/taskbar
+//   resources/icon.png                  256×256 window icon (Linux)
 //   resources/trayTemplate.png, @2x     macOS menu-bar template (16 / 32 px)
 //   resources/tray.ico                  Windows tray, PNG-in-ICO at 16/20/24/32/40/48/64 px
 //   resources/tray.png                  Linux tray (32 px)
@@ -83,6 +84,8 @@ app.whenReady().then(async () => {
     winEntries.push({ size, png: await render(winIcon, size) })
   }
   out('build/icon.ico', ico(winEntries))
+  // Runtime copy for BrowserWindow `icon` on Windows (packaged via extraResources).
+  out('resources/icon.ico', ico(winEntries))
 
   const template = src('tray-template.svg')
   out('resources/trayTemplate.png', await render(template, 16))

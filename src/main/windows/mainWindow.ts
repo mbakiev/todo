@@ -42,8 +42,11 @@ function platformChrome(): Electron.BrowserWindowConstructorOptions {
     // Traffic lights inset over the sidebar; the renderer provides drag regions.
     return { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 16, y: 18 } }
   }
-  // Windows / Linux: standard frame, menu bar hidden (its accelerators still work).
-  return { autoHideMenuBar: true, icon: resourcePath('icon.png') }
+  // Windows / Linux: standard frame, menu bar hidden (its accelerators still work). Windows
+  // gets the full-bleed .ico (the .png keeps macOS-style padding and would look small in
+  // the taskbar).
+  const icon = process.platform === 'win32' ? 'icon.ico' : 'icon.png'
+  return { autoHideMenuBar: true, icon: resourcePath(icon) }
 }
 
 export interface CreateMainWindowOptions {
