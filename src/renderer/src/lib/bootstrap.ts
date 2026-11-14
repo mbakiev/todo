@@ -65,7 +65,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<void> {
     useTasksStore.getState().load(),
   ])
   setAppInfo(info)
-  // Unsaved drafts kept for tasks that no longer exist are dropped.
+  // Unsaved drafts of tasks that no longer exist are dropped once older than 30 days.
   pruneUnsavedDrafts(defaultStorage(), new Set(Object.keys(useTasksStore.getState().byId)))
 
   if (options.persistView) {

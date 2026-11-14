@@ -2,6 +2,7 @@
 // localStorage so it survives a window hide, quit or crash. When the task is opened again the
 // detail panel offers it back as an unsaved draft ("Recovered unsaved text · Keep / Discard");
 // it is never applied silently. Pure functions over an injectable Storage (unit-tested).
+import { SOFT_DELETE_RETENTION_MS } from '@shared/constants'
 
 export type DraftFieldName = 'title' | 'description'
 
@@ -78,8 +79,16 @@ export function clearUnsavedDraft(
   }
 }
 
-/** Drops stored drafts whose task no longer exists (or that cannot be read). */
-export function pruneUnsavedDrafts(storage: Storage | null, existingTaskIds: ReadonlySet<string>) {
+/**
+ * Drops stored drafts that cannot be read, and drafts whose task no longer exists *and* that
+ * are older than 30 days (the window after which deleted tasks are purged). A younger draft of
+ * a missing task is kept: the task may be deleted now and restored with Undo later.
+ */
+export function pruneUnsavedDrafts(
+  storage: Storage | null,
+  existingTaskIds: ReadonlySet<string>,
+  now: number = Date.now(),
+) {
   if (!storage) return
   try {
     const stale: string[] = []
@@ -87,7 +96,8 @@ export function pruneUnsavedDrafts(storage: Storage | null, existingTaskIds: Rea
       const k = storage.key(i)
       if (!k?.startsWith(PREFIX)) continue
       const d = parse(storage.getItem(k))
-      if (!d || !existingTaskIds.has(d.taskId)) stale.push(k)
+      const expired = (x: UnsavedDraft): boolean => now - x.storedAt > SOFT_DELETE_RETENTION_MS
+      if (!d || (!existingTaskIds.has(d.taskId) && expired(d))) stale.push(k)
     }
     for (const k of stale) storage.removeItem(k)
   } catch {

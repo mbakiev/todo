@@ -37,16 +37,31 @@ describe('unsaved draft storage', () => {
     expect(() => storeUnsavedDraft(null, draft())).not.toThrow()
   })
 
-  it('prunes drafts of tasks that no longer exist (and unreadable ones), keeps the rest', () => {
-    storeUnsavedDraft(localStorage, draft({ taskId: 'alive' }))
-    storeUnsavedDraft(localStorage, draft({ taskId: 'gone' }))
+  it('prunes drafts of missing tasks older than 30 days (and unreadable ones), keeps the rest', () => {
+    const DAY = 24 * 60 * 60 * 1000
+    const now = 100 * DAY
+    storeUnsavedDraft(localStorage, draft({ taskId: 'alive', storedAt: now - 90 * DAY }))
+    storeUnsavedDraft(localStorage, draft({ taskId: 'gone', storedAt: now - 31 * DAY }))
     localStorage.setItem('martin-todos.unsavedDraft.x.title', 'garbage')
     localStorage.setItem('martin-todos.viewPrefs.list', '{"keep":true}')
-    pruneUnsavedDrafts(localStorage, new Set(['alive']))
+    pruneUnsavedDrafts(localStorage, new Set(['alive']), now)
     expect(loadUnsavedDraft(localStorage, 'alive', 'description')).not.toBeNull()
     expect(loadUnsavedDraft(localStorage, 'gone', 'description')).toBeNull()
     expect(localStorage.getItem('martin-todos.unsavedDraft.x.title')).toBeNull()
     expect(localStorage.getItem('martin-todos.viewPrefs.list')).not.toBeNull()
+  })
+})
+
+describe('a draft of a deleted task survives a restart (Undo after relaunch)', () => {
+  it("keeps a missing task's draft younger than 30 days", () => {
+    const DAY = 24 * 60 * 60 * 1000
+    const now = 100 * DAY
+    storeUnsavedDraft(localStorage, draft({ taskId: 'deleted', storedAt: now - 29 * DAY }))
+    pruneUnsavedDrafts(localStorage, new Set(), now) // startup: the task is soft-deleted
+    // …then Undo brings the task back, and its text is still on offer.
+    expect(
+      recoverableDraft(localStorage, { id: 'deleted', updatedAt: 100 }, 'description', ''),
+    ).toEqual({ text: 'typed but not saved', changedSince: false })
   })
 })
 
