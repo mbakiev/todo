@@ -172,5 +172,65 @@ export function planDrop(ctx: DropContext): MoveTaskInput | null {
   return { status, ...next }
 }
 
+export interface Point {
+  x: number
+  y: number
+}
+
+export interface DropRect {
+  top: number
+  left: number
+  right: number
+  bottom: number
+}
+
+export interface DropCandidate {
+  id: string
+  /** The column this droppable belongs to (a column id or a card in it). */
+  status: Status
+  rect: DropRect
+}
+
+/** Distance from `v` to the interval [lo, hi] (0 inside it). */
+const gap = (v: number, lo: number, hi: number): number => (v < lo ? lo - v : v > hi ? v - hi : 0)
+
+/**
+ * For a pointer that is inside the board but over no droppable (the gutters between columns,
+ * the board's padding): the nearest column, and in a column that honours manual order the
+ * nearest card in it, so the drop lands there instead of being cancelled. Returns the
+ * droppable id to treat as hovered, or null when there are no columns.
+ */
+export function nearestDropTarget(
+  point: Point,
+  candidates: readonly DropCandidate[],
+  manual: (status: Status) => boolean,
+): string | null {
+  let column: DropCandidate | null = null
+  let best = Infinity
+  for (const c of candidates) {
+    if (statusOfColumnId(c.id) === null) continue
+    // Horizontal distance first (gutters are vertical strips), vertical breaks ties.
+    const d =
+      gap(point.x, c.rect.left, c.rect.right) * 1e6 + gap(point.y, c.rect.top, c.rect.bottom)
+    if (d < best) {
+      best = d
+      column = c
+    }
+  }
+  if (!column) return null
+  if (!manual(column.status)) return column.id
+  let card: DropCandidate | null = null
+  best = Infinity
+  for (const c of candidates) {
+    if (c.status !== column.status || statusOfColumnId(c.id) !== null) continue
+    const d = gap(point.y, c.rect.top, c.rect.bottom)
+    if (d < best) {
+      best = d
+      card = c
+    }
+  }
+  return card?.id ?? column.id
+}
+
 /** Default page size of the Done column (spec §6: newest 50, "Show more" adds 50). */
 export const DONE_PAGE_SIZE = 50

@@ -71,6 +71,7 @@ export function InlineAddTask({ scope }: { scope: BoardScope }) {
     )
   }
 
+  // The 1 px border + 30 px input match the closed button's 32 px, so nothing below moves.
   return (
     <div className="rounded-md border border-primary/50 bg-card shadow-xs ring-1 ring-primary/30">
       <input
@@ -93,7 +94,7 @@ export function InlineAddTask({ scope }: { scope: BoardScope }) {
         }}
         onBlur={() => setOpen(false)}
         aria-invalid={error !== null || undefined}
-        className="h-8 w-full bg-transparent px-2.5 text-[13px] outline-none placeholder:text-muted-foreground/70"
+        className="h-7.5 w-full bg-transparent px-2.5 text-[13px] outline-none placeholder:text-muted-foreground/70"
       />
       {error && (
         <p role="alert" className="px-2.5 pb-1.5 text-[12px] text-destructive">

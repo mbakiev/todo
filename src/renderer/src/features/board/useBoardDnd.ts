@@ -25,6 +25,8 @@ import {
   findContainer,
   isColumnManual,
   moveToContainer,
+  nearestDropTarget,
+  type DropCandidate,
   planDrop,
   statusOfColumnId,
   type ColumnItems,
@@ -80,6 +82,8 @@ export interface BoardDnd {
   activeTask: Task | null
   overStatus: Status | null
   originStatus: Status | null
+  /** Attach to the board's scroll container: drops anywhere inside it resolve to a column. */
+  setBoardElement: (el: HTMLElement | null) => void
   dndContextProps: {
     sensors: ReturnType<typeof useSensors>
     collisionDetection: CollisionDetection
@@ -135,9 +139,35 @@ export function useBoardDnd(
     }),
   )
 
+  const [boardEl, setBoardEl] = useState<HTMLElement | null>(null)
   const collisionDetection: CollisionDetection = (args) => {
     const hits = pointerWithin(args)
-    return hits.length > 0 ? prefersCards(hits) : rectIntersection(args)
+    if (hits.length > 0) return prefersCards(hits)
+    // Inside the board but over no droppable (a gutter between columns, the padding): the
+    // nearest column (and nearest slot in Manual) rather than a cancelled drop.
+    const p = args.pointerCoordinates
+    const board = boardEl?.getBoundingClientRect()
+    if (
+      p &&
+      board &&
+      p.x >= board.left &&
+      p.x <= board.right &&
+      p.y >= board.top &&
+      p.y <= board.bottom
+    ) {
+      // Column membership from the live drag copy: a card's own `data.status` is stale once
+      // it has hopped columns (the dragged card's placeholder must count where it now is).
+      const items = drag?.items
+      const candidates: DropCandidate[] = []
+      for (const c of args.droppableContainers) {
+        const rect = args.droppableRects.get(c.id)
+        const status = items ? findContainer(items, String(c.id)) : null
+        if (rect && status) candidates.push({ id: String(c.id), status, rect })
+      }
+      const id = nearestDropTarget(p, candidates, (s) => isColumnManual(sort, scope, s))
+      if (id !== null) return [{ id }]
+    }
+    return rectIntersection(args)
   }
 
   const resolveStatus = (id: string | null): Status | null => {
@@ -220,6 +250,7 @@ export function useBoardDnd(
     activeTask: drag ? (byId[drag.activeId] ?? null) : null,
     overStatus: drag?.overStatus ?? null,
     originStatus: drag?.originStatus ?? null,
+    setBoardElement: setBoardEl,
     dndContextProps: {
       sensors,
       collisionDetection,

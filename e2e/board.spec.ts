@@ -126,6 +126,85 @@ test('reorders within a column in Manual sort', async () => {
   await expect.poll(() => ids(cards(page, 'in_progress'))).toEqual([moving, ...target])
 })
 
+/** Drags `source` and drops it at a viewport point (not necessarily over a droppable). */
+async function dragToPoint(page: Page, source: Locator, x: number, y: number): Promise<void> {
+  const s = await source.boundingBox()
+  if (!s) throw new Error('drag: source not visible')
+  const sx = s.x + s.width / 2
+  const sy = s.y + s.height / 2
+  await page.mouse.move(sx, sy)
+  await page.mouse.down()
+  await page.mouse.move(sx + 8, sy + 8, { steps: 4 })
+  await page.mouse.move(x, y, { steps: 20 })
+  await page.waitForTimeout(150)
+  await page.mouse.move(x, y + 1, { steps: 2 })
+  await page.mouse.up()
+  await page.waitForTimeout(250)
+}
+
+/** The x of the middle of the gutter between two columns, nudged towards the right one. */
+async function gutterX(page: Page, left: string, right: string, nudge: number): Promise<number> {
+  const l = await page.locator(`[data-testid="board-today"] [data-column="${left}"]`).boundingBox()
+  const r = await page.locator(`[data-testid="board-today"] [data-column="${right}"]`).boundingBox()
+  if (!l || !r) throw new Error('columns not visible')
+  const gap = r.x - (l.x + l.width)
+  expect(gap).toBeGreaterThan(4)
+  return l.x + l.width + gap / 2 + nudge
+}
+
+test('a drop in the gutter between columns lands in the nearest column (and slot in Manual)', async () => {
+  launched = await launchApp({ seed: true })
+  const { page } = launched
+  await setSize(launched)
+  await ready(page)
+
+  // Sorted board: the card moves into the column nearest to the drop point.
+  const card = cards(page, 'not_started').first()
+  const id = (await card.getAttribute('data-task-id')) as string
+  const target = await column(page, 'in_progress').boundingBox()
+  if (!target) throw new Error('column not visible')
+  const x = await gutterX(page, 'in_progress', 'blocked', -2) // a hair closer to In Progress
+  await dragToPoint(page, card, x, target.y + 40)
+  await expect(column(page, 'in_progress').locator(`[data-task-id="${id}"]`)).toBeVisible()
+
+  // Manual: the nearest slot in the nearest column.
+  await page.getByRole('radio', { name: 'Manual' }).click()
+  await expect(page.getByTestId('board-today')).toHaveAttribute('data-sort', 'manual')
+  const inProgress = await ids(cards(page, 'in_progress'))
+  expect(inProgress.length).toBeGreaterThanOrEqual(2)
+  const second = await cards(page, 'in_progress').nth(1).boundingBox()
+  if (!second) throw new Error('card not visible')
+  const moving = (await cards(page, 'not_started').first().getAttribute('data-task-id')) as string
+  const xLeft = await gutterX(page, 'not_started', 'in_progress', 2) // closer to In Progress
+  await dragToPoint(page, cards(page, 'not_started').first(), xLeft, second.y + 4)
+  await expect
+    .poll(() => ids(cards(page, 'in_progress')))
+    .toEqual([inProgress[0], moving, ...inProgress.slice(1)])
+})
+
+test('"+ Add task" keeps the same height when it opens (no column jump)', async () => {
+  launched = await launchApp({ seed: true })
+  const { page } = launched
+  await setSize(launched)
+  await ready(page)
+  const button = page.getByRole('button', { name: 'Add task' })
+  const closed = await button.boundingBox()
+  const firstCard = await cards(page, 'not_started').first().boundingBox()
+  await button.click()
+  const input = page.getByRole('textbox', { name: 'New task title' })
+  await expect(input).toBeFocused()
+  // The input's frame (border included) occupies exactly the button's height.
+  const frame = await input.evaluate((el) => {
+    const r = (
+      el.parentElement as unknown as { getBoundingClientRect(): { height: number } }
+    ).getBoundingClientRect()
+    return r.height
+  })
+  expect(frame).toBe(closed?.height)
+  const firstCardOpen = await cards(page, 'not_started').first().boundingBox()
+  expect(firstCardOpen?.y).toBe(firstCard?.y)
+})
+
 test('inline add parses tokens; input stays open for the next task', async () => {
   launched = await launchApp({ seed: true })
   const { page } = launched

@@ -4,6 +4,7 @@ import {
   findContainer,
   isColumnManual,
   moveToContainer,
+  nearestDropTarget,
   neighboursOf,
   planDrop,
   reorderWithin,
@@ -206,5 +207,43 @@ describe('planDrop', () => {
     expect(
       planDrop(ctx({ scope: 'everything', overStatus: 'done', overId: 'column:done' })),
     ).toEqual({ status: 'done', beforeId: null, afterId: null })
+  })
+})
+
+describe('nearestDropTarget (drops in the gutters between columns)', () => {
+  const col = (status: Status, left: number) => ({
+    id: columnDroppableId(status),
+    status,
+    rect: { left, right: left + 100, top: 0, bottom: 500 },
+  })
+  const card = (id: string, status: Status, left: number, top: number) => ({
+    id,
+    status,
+    rect: { left: left + 8, right: left + 92, top, bottom: top + 40 },
+  })
+  const candidates = [
+    col('not_started', 0),
+    col('in_progress', 112),
+    card('a', 'in_progress', 112, 50),
+    card('b', 'in_progress', 112, 100),
+    col('blocked', 224),
+  ]
+  const sorted = (): boolean => false
+  const manual = (): boolean => true
+
+  it('picks the horizontally nearest column', () => {
+    expect(nearestDropTarget({ x: 105, y: 200 }, candidates, sorted)).toBe('column:not_started')
+    expect(nearestDropTarget({ x: 107, y: 200 }, candidates, sorted)).toBe('column:in_progress')
+    expect(nearestDropTarget({ x: 220, y: 200 }, candidates, sorted)).toBe('column:blocked')
+  })
+
+  it('in Manual, the nearest card of that column (else the column itself)', () => {
+    expect(nearestDropTarget({ x: 108, y: 60 }, candidates, manual)).toBe('a')
+    expect(nearestDropTarget({ x: 108, y: 300 }, candidates, manual)).toBe('b')
+    expect(nearestDropTarget({ x: 220, y: 60 }, candidates, manual)).toBe('column:blocked')
+  })
+
+  it('no columns: nothing', () => {
+    expect(nearestDropTarget({ x: 0, y: 0 }, [], manual)).toBeNull()
   })
 })

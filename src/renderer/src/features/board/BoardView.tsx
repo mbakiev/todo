@@ -62,7 +62,7 @@ export function BoardView({ scope }: BoardViewProps) {
     [columns, doneLimit],
   )
 
-  const dnd = useBoardDnd(scope, sort, visible)
+  const { setBoardElement, ...dnd } = useBoardDnd(scope, sort, visible)
   const selectedId = useUiStore((s) => s.selectedTaskId)
   const dragging = dnd.activeTask !== null
   const hiddenDone = columns.done.length - visible.done.length
@@ -75,6 +75,7 @@ export function BoardView({ scope }: BoardViewProps) {
       </ToolbarControls>
 
       <div
+        ref={setBoardElement}
         className="flex h-full scrollbar-thin gap-3 overflow-x-auto p-4"
         data-testid={`board-${scope}`}
         data-sort={sort}
