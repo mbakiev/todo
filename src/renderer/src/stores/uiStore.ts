@@ -23,7 +23,12 @@ export interface UiState {
   searchFocusRequest: number
 
   setActiveView(view: ViewId): void
-  selectTask(id: string | null): void
+  /**
+   * Opens a task in the detail panel (null closes it). Goes through the panel's leave guard:
+   * when the open task has unsaved text that cannot be saved, the panel stays. `force` skips
+   * the guard (the task is gone, or a temp id resolved to the same task).
+   */
+  selectTask(id: string | null, options?: { force?: boolean }): void
   setSearchText(text: string): void
   toggleFilterTag(tagId: string): void
   setFilterTags(tagIds: string[]): void
@@ -42,7 +47,23 @@ function toggle<T>(list: readonly T[], item: T): T[] {
   return list.includes(item) ? list.filter((x) => x !== item) : [...list, item]
 }
 
-export const useUiStore = create<UiState>()((set) => ({
+/**
+ * Asked before the detail panel closes or switches task. Returns null when it may leave right
+ * away, else a promise resolving to whether it may leave (it saves pending text first).
+ */
+export type LeaveGuard = (nextId: string | null) => Promise<boolean> | null
+
+let leaveGuard: LeaveGuard | null = null
+
+/** The open detail panel registers its guard; returns an unregister function. */
+export function setLeaveGuard(guard: LeaveGuard): () => void {
+  leaveGuard = guard
+  return () => {
+    if (leaveGuard === guard) leaveGuard = null
+  }
+}
+
+export const useUiStore = create<UiState>()((set, get) => ({
   activeView: 'today',
   selectedTaskId: null,
   filter: EMPTY_FILTER,
@@ -51,7 +72,20 @@ export const useUiStore = create<UiState>()((set) => ({
   searchFocusRequest: 0,
 
   setActiveView: (activeView) => set({ activeView }),
-  selectTask: (selectedTaskId) => set({ selectedTaskId }),
+  selectTask: (selectedTaskId, options) => {
+    const current = get().selectedTaskId
+    if (!options?.force && leaveGuard && selectedTaskId !== current) {
+      const pending = leaveGuard(selectedTaskId)
+      if (pending) {
+        void pending.then((ok) => {
+          // Only if nothing else changed the selection meanwhile.
+          if (ok && get().selectedTaskId === current) set({ selectedTaskId })
+        })
+        return
+      }
+    }
+    set({ selectedTaskId })
+  },
   setSearchText: (text) => set((s) => ({ filter: { ...s.filter, text } })),
   toggleFilterTag: (tagId) =>
     set((s) => ({ filter: { ...s.filter, tagIds: toggle(s.filter.tagIds, tagId) } })),

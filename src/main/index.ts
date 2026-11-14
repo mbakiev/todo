@@ -19,6 +19,7 @@ import { configureUserDataDir, getAppPaths, isDev, isTestRun } from './paths'
 import { applyLaunchAtLogin, wasLaunchedAtLogin } from './services/autoLaunch'
 import { startAutomaticBackups } from './services/backup'
 import { createQuitGate } from './quitGate'
+import { testFaults } from './testFaults'
 import { openDatabaseWithRecovery } from './startup'
 import { installTestHook, registerGlobalShortcuts, unregisterGlobalShortcuts } from './shortcuts'
 import { createTray, destroyTray } from './tray'
@@ -147,6 +148,10 @@ async function bootstrap(): Promise<void> {
       showQuickAdd: () => showQuickAdd(ctx),
       hideQuickAdd: () => hideQuickAdd(ctx),
       isQuitting: () => ctx.quitting,
+      // Make tasks.update fail (true) or work again (false).
+      failTaskUpdates: (on: unknown) => {
+        testFaults.failTaskUpdates = on === true
+      },
       // Fast bulk inserts for e2e (e.g. the 5,000-row list test); validated like IPC input.
       bulkCreateTasks: (inputs: unknown) => {
         const parsed = z.array(taskCreateInputSchema).parse(inputs)

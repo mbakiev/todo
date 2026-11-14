@@ -9,7 +9,8 @@ import { useUiStore } from '@/stores/uiStore'
 export async function deleteTaskWithUndo(id: string): Promise<boolean> {
   const store = useTasksStore.getState()
   const title = store.byId[id]?.title
-  if (useUiStore.getState().selectedTaskId === id) useUiStore.getState().selectTask(null)
+  if (useUiStore.getState().selectedTaskId === id)
+    useUiStore.getState().selectTask(null, { force: true })
   const ok = await store.remove(id)
   if (ok) {
     toast('Task deleted', {

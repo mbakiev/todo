@@ -324,7 +324,15 @@ Everything autosaves: discrete fields immediately, title and description debounc
 (~500 ms) and flushed on blur, panel close, task switch, and window hide. Never lose
 keystrokes: if a title/description save fails, the field keeps the typed text (the store's
 rollback is not adopted over it), shows a persistent "Not saved · Retry" state and saves
-again on the next edit or flush. Limits are enforced where the user types: the title input
+again on the next edit or flush. Closing the panel (close button, Esc), switching task or
+Delete-from-panel first saves and waits for the answer; if it still fails after one retry
+the panel stays open on that task with a toast (a leave guard in `uiStore.selectTask`;
+`force` bypasses it only when the task is gone or a temp id resolved). Where the panel
+cannot stay (window hide, quit, reload/crash) text that could not be saved is kept in
+localStorage (`lib/draftRecovery.ts`, keyed by task id + field, with the task's
+`updatedAt`); opening the task again offers it in the field as "Recovered unsaved text ·
+Keep / Discard" — never applied silently. It is cleared once saved or discarded, when the
+saved value already equals it, and at startup when the task no longer exists. Limits are enforced where the user types: the title input
 stops at 500 characters, and a description over 1,000,000 characters is flagged and not
 sent until shortened.
 

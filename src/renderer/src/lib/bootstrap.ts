@@ -9,6 +9,7 @@ import { useTagsStore } from '@/stores/tagsStore'
 import { onTempIdResolved, useTasksStore } from '@/stores/tasksStore'
 import { useUiStore } from '@/stores/uiStore'
 import { api } from './api'
+import { defaultStorage, pruneUnsavedDrafts } from './draftRecovery'
 import { installFlushHandshake } from './flush'
 import { setAppInfo } from './platform'
 
@@ -21,7 +22,8 @@ function applyDataChange(change: DataChange): void {
   useTagsStore.getState().applyChange(change)
   useTasksStore.getState().applyChange(change)
   const selected = useUiStore.getState().selectedTaskId
-  if (selected && change.removedTaskIds?.includes(selected)) useUiStore.getState().selectTask(null)
+  if (selected && change.removedTaskIds?.includes(selected))
+    useUiStore.getState().selectTask(null, { force: true })
 }
 
 export async function bootstrap(options: BootstrapOptions = {}): Promise<void> {
@@ -43,7 +45,8 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<void> {
   }
 
   onTempIdResolved((tempId, realId) => {
-    if (useUiStore.getState().selectedTaskId === tempId) useUiStore.getState().selectTask(realId)
+    if (useUiStore.getState().selectedTaskId === tempId)
+      useUiStore.getState().selectTask(realId, { force: true })
   })
 
   // A tag that disappears (deleted here or elsewhere, or by an import) leaves the filter.
@@ -62,6 +65,8 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<void> {
     useTasksStore.getState().load(),
   ])
   setAppInfo(info)
+  // Unsaved drafts kept for tasks that no longer exist are dropped.
+  pruneUnsavedDrafts(defaultStorage(), new Set(Object.keys(useTasksStore.getState().byId)))
 
   if (options.persistView) {
     useUiStore.setState({ activeView: useSettingsStore.getState().settings.lastView })

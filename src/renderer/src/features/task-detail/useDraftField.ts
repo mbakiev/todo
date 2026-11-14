@@ -5,12 +5,18 @@
 // value is never adopted over it, the field shows a persistent "Not saved" state, and the
 // next edit, flush (blur / panel close / window hide) or an explicit retry saves it again.
 // An invalid draft (e.g. over the length limit) is never sent and never overwritten either.
+// `flushAsync` reports whether everything is saved, so the panel can refuse to close on a
+// failure; `onSaveFailed` lets it keep the text outside React (lib/draftRecovery.ts), and a
+// recovered draft from an earlier session starts in the `recovered` state (Keep / Discard).
 import { useEffect, useRef, useState } from 'react'
 import { AUTOSAVE_DEBOUNCE_MS } from '@shared/constants'
 import { createAutosave, type Autosave } from './autosave'
 
-/** `saved`: nothing pending · `failed`: the last save was rejected · `invalid`: not saveable. */
-export type DraftStatus = 'saved' | 'failed' | 'invalid'
+/**
+ * `saved`: nothing pending · `failed`: the last save was rejected · `invalid`: not saveable ·
+ * `recovered`: showing unsaved text from an earlier session, waiting for Keep / Discard.
+ */
+export type DraftStatus = 'saved' | 'failed' | 'invalid' | 'recovered'
 
 export interface DraftFieldOptions {
   /** Current value from the store. */
@@ -25,6 +31,14 @@ export interface DraftFieldOptions {
   /** Values that must not be saved (e.g. an empty title). Default: all valid. */
   isValid?(value: string): boolean
   delayMs?: number
+  /** A save of `value` failed (latest attempt only). */
+  onSaveFailed?(value: string): void
+  /** The latest save succeeded. */
+  onSaveSucceeded?(): void
+  /** Unsaved text recovered from an earlier session: shown instead of `value` until kept. */
+  recovered?: string | null
+  /** The recovered text was discarded. */
+  onDiscardRecovered?(): void
 }
 
 export interface DraftField {
@@ -37,6 +51,12 @@ export interface DraftField {
   commit(): void
   /** Saves the current draft again after a failure. */
   retry(): void
+  /** Flush and wait for the answers: true when everything typed is saved. */
+  flushAsync(): Promise<boolean>
+  /** Recovered text: save it. */
+  keepRecovered(): void
+  /** Recovered text: drop it and show the saved value. */
+  discardRecovered(): void
   readonly dirty: boolean
   readonly status: DraftStatus
 }
@@ -58,9 +78,15 @@ export class DraftController {
    * rolls back *before* we hear about it, and that rollback must not replace the draft.
    */
   private inflight = 0
+  /** Settlement of each in-flight save (for flushAsync). */
+  private readonly answers = new Set<Promise<void>>()
+  /** Showing recovered text that the user has not kept yet. */
+  private recovered: boolean
   readonly autosave: Autosave<string>
   private onStatus: (status: DraftStatus) => void = () => {}
   private onSettled: () => void = () => {}
+  /** Outcome callbacks (kept current by the hook via setOutcomeHooks). */
+  private hooks: { failed?(value: string): void; succeeded?(): void } = {}
 
   constructor(
     initial: string,
@@ -68,8 +94,10 @@ export class DraftController {
     private isValid: (v: string) => boolean,
     private readonly save: (v: string) => void | Promise<boolean>,
     delayMs: number,
+    recovered = false,
   ) {
     this.synced = normalize(initial)
+    this.recovered = recovered
     this.autosave = createAutosave<string>((v) => this.persist(v), delayMs)
   }
 
@@ -86,19 +114,24 @@ export class DraftController {
     }
   }
 
+  setOutcomeHooks(hooks: { failed?(value: string): void; succeeded?(): void }): void {
+    this.hooks = hooks
+  }
+
   setRules(normalize: (v: string) => string, isValid: (v: string) => boolean): void {
     this.normalize = normalize
     this.isValid = isValid
   }
 
   get status(): DraftStatus {
+    if (this.recovered) return 'recovered'
     if (this.invalid) return 'invalid'
     return this.failedValue !== null ? 'failed' : 'saved'
   }
 
   /** True while the draft holds text the store does not (pending, failed or invalid). */
   get dirty(): boolean {
-    return this.autosave.dirty || this.failedValue !== null || this.invalid
+    return this.autosave.dirty || this.failedValue !== null || this.invalid || this.recovered
   }
 
   private persist(value: string): void {
@@ -111,25 +144,56 @@ export class DraftController {
     const result = this.save(canonical)
     if (!result) return
     this.inflight++
-    void result.then(
+    const answer = result.then(
       (ok) => this.settled(attempt, value, ok),
       () => this.settled(attempt, value, false),
     )
+    this.answers.add(answer)
+    void answer.finally(() => this.answers.delete(answer))
   }
 
   private settled(attempt: number, value: string, ok: boolean): void {
     this.inflight--
-    if (!ok && attempt === this.attempt) {
-      // The store has rolled back; keep the text and remember to save it again.
-      this.synced = null
-      this.failedValue = value
-      this.onStatus(this.status)
+    if (attempt === this.attempt) {
+      if (ok) {
+        this.hooks.succeeded?.()
+      } else {
+        // The store has rolled back; keep the text and remember to save it again.
+        this.synced = null
+        this.failedValue = value
+        this.onStatus(this.status)
+        this.hooks.failed?.(value)
+      }
     }
     if (this.inflight === 0) this.onSettled()
   }
 
+  /** Flush, then wait for every answer. True when nothing typed is left unsaved. */
+  async flushAsync(): Promise<boolean> {
+    if (this.recovered) return true // undecided recovered text stays stored; nothing to lose
+    if (this.invalid) return false
+    this.flush()
+    while (this.answers.size > 0) await Promise.allSettled([...this.answers])
+    return this.failedValue === null && !this.invalid && !this.autosave.dirty
+  }
+
+  /** Recovered text kept: it is now an ordinary edit (saved right away). */
+  keep(value: string): void {
+    this.recovered = false
+    this.synced = null
+    this.edit(value)
+    this.onStatus(this.status)
+    this.flush()
+  }
+
   /** A user edit: schedule a save, or cancel one if the value is back to saved / invalid. */
   edit(value: string): void {
+    if (this.recovered) {
+      // Editing recovered text keeps it.
+      this.recovered = false
+      this.synced = null
+      this.onStatus(this.status)
+    }
     const wasInvalid = this.invalid
     this.invalid = !this.isValid(value)
     if (this.invalid) this.autosave.cancel()
@@ -148,6 +212,7 @@ export class DraftController {
   /** The draft was reset to the stored value (commit of an invalid draft). */
   reset(value: string): void {
     this.autosave.cancel()
+    this.recovered = false
     this.invalid = false
     this.failedValue = null
     this.synced = this.normalize(value)
@@ -174,12 +239,19 @@ export function useDraftField({
   normalize = identity,
   isValid = always,
   delayMs = AUTOSAVE_DEBOUNCE_MS,
+  onSaveFailed,
+  onSaveSucceeded,
+  recovered = null,
+  onDiscardRecovered,
 }: DraftFieldOptions): DraftField {
-  const [draft, setDraft] = useState(value)
-  const [ctl] = useState(() => new DraftController(value, normalize, isValid, save, delayMs))
-  const [status, setStatus] = useState<DraftStatus>('saved')
+  const [draft, setDraft] = useState(recovered ?? value)
+  const [ctl] = useState(
+    () => new DraftController(value, normalize, isValid, save, delayMs, recovered !== null),
+  )
+  const [status, setStatus] = useState<DraftStatus>(recovered !== null ? 'recovered' : 'saved')
   useEffect(() => {
     ctl.setRules(normalize, isValid)
+    ctl.setOutcomeHooks({ failed: onSaveFailed, succeeded: onSaveSucceeded })
   })
   // Latest store value, for re-checking once our saves are answered (values that arrived
   // while a save was in flight were not adopted).
@@ -215,6 +287,13 @@ export function useDraftField({
     },
     flush: () => ctl.flush(),
     retry: () => ctl.flush(),
+    flushAsync: () => ctl.flushAsync(),
+    keepRecovered: () => ctl.keep(draft),
+    discardRecovered: () => {
+      ctl.reset(value)
+      setDraft(value)
+      onDiscardRecovered?.()
+    },
     commit: () => {
       ctl.flush()
       if (!ctl.valid(draft)) {

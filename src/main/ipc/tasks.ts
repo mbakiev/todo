@@ -7,6 +7,7 @@ import {
 } from '@shared/schemas'
 import { z } from 'zod'
 import type { AppContext } from '../context'
+import { testFaults } from '../testFaults'
 import { handle, noArgs } from './handle'
 
 export function registerTaskHandlers(ctx: AppContext): void {
@@ -24,6 +25,7 @@ export function registerTaskHandlers(ctx: AppContext): void {
   })
 
   handle(IPC.tasks.update, z.tuple([idSchema, taskUpdatePatchSchema]), (id, patch) => {
+    if (testFaults.failTaskUpdates) throw new Error('The change could not be saved (simulated).')
     const task = tasks.update(id, patch)
     ctx.broadcastDataChanged({ upsertedTasks: [task] })
     return task

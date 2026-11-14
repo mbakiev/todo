@@ -120,7 +120,7 @@ export function useBoardDnd(
           setDrag(next)
         }
         const ui = useUiStore.getState()
-        if (ui.selectedTaskId === tempId) ui.selectTask(realId)
+        if (ui.selectedTaskId === tempId) ui.selectTask(realId, { force: true })
       }),
     [],
   )

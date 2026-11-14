@@ -3,7 +3,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import type { Api } from '../src/shared/ipc'
 import type { Task } from '../src/shared/types'
-import { launchShell, tempUserData, type ShellApp } from './shellHelpers'
+import { hook, launchShell, tempUserData, type ShellApp } from './shellHelpers'
 
 let shell: ShellApp | undefined
 
@@ -132,4 +132,65 @@ test('SIGTERM saves pending edits before exiting', async () => {
   await waitForExit(s)
   shell = await launchShell({ userData })
   expect((await dbTasks(shell.page)).some((t) => t.title.includes('sigterm'))).toBe(true)
+})
+
+test('a failed save keeps the panel open (close, Esc, switch, delete) and saves once it works', async () => {
+  shell = await launchShell({ seed: true })
+  const { page, app } = shell
+  await openTask(page, TASK)
+  await hook(app, 'failTaskUpdates', true)
+  await typeDescription(page, ' not-saved-yet')
+  await expect(panel(page).getByTestId('description-save-error')).toContainText('Not saved')
+
+  // Esc (twice: leave the editor, then the panel), the close button, another task, Delete.
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('Escape')
+  await expect(page.getByText("Couldn't save your changes").first()).toBeVisible()
+  await panel(page).getByRole('button', { name: 'Close' }).click()
+  await page.locator('[data-task-id]', { hasText: 'Pick up dry cleaning' }).first().click()
+  await panel(page).getByRole('button', { name: 'Delete task' }).click()
+  await page.waitForTimeout(300)
+  await expect(titleBox(page)).toHaveValue(TASK)
+  await expect(editor(page)).toContainText('not-saved-yet')
+  expect((await dbTasks(page)).find((t) => t.title === TASK)?.description).not.toContain(
+    'not-saved-yet',
+  )
+
+  // Failure lifted: closing now saves first, then closes.
+  await hook(app, 'failTaskUpdates', false)
+  await panel(page).getByRole('button', { name: 'Close' }).click()
+  await expect(panel(page)).toBeHidden()
+  expect((await dbTasks(page)).find((t) => t.title === TASK)?.description).toContain(
+    'not-saved-yet',
+  )
+})
+
+test('text that could not be saved before quitting is offered back (Keep saves it)', async () => {
+  const userData = tempUserData()
+  shell = await launchShell({ userData, seed: true })
+  await openTask(shell.page, TASK)
+  await hook(shell.app, 'failTaskUpdates', true)
+  await typeDescription(shell.page, ' kept-across-quit')
+  await expect(panel(shell.page).getByTestId('description-save-error')).toBeVisible()
+  await shell.close({ keepUserData: true })
+
+  shell = await launchShell({ userData })
+  const { page } = shell
+  expect((await dbTasks(page)).find((t) => t.title === TASK)?.description).not.toContain(
+    'kept-across-quit',
+  )
+  await openTask(page, TASK)
+  const notice = panel(page).getByTestId('description-recovered')
+  await expect(notice).toContainText('Recovered unsaved text')
+  await expect(editor(page)).toContainText('kept-across-quit')
+  await notice.getByRole('button', { name: 'Keep' }).click()
+  await expect
+    .poll(async () => (await dbTasks(page)).find((t) => t.title === TASK)?.description)
+    .toContain('kept-across-quit')
+  await expect(notice).toBeHidden()
+  // Saved: not offered again.
+  await page.reload()
+  await page.waitForSelector('[data-slot="view"]')
+  await openTask(page, TASK)
+  await expect(panel(page).getByTestId('description-recovered')).toHaveCount(0)
 })

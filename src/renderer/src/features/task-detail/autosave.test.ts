@@ -221,4 +221,71 @@ describe('useDraftField', () => {
       expect(update).toHaveBeenCalledExactlyOnceWith('a', { description: 'short' })
     })
   })
+
+  describe('flushAsync and recovered drafts', () => {
+    it('flushAsync reports failure, then success once the save goes through; outcome callbacks fire', async () => {
+      let ok = false
+      const save = vi.fn(() => Promise.resolve(ok))
+      const onSaveFailed = vi.fn()
+      const onSaveSucceeded = vi.fn()
+      const hook = renderHook(() =>
+        useDraftField({ value: 'old', save, onSaveFailed, onSaveSucceeded }),
+      )
+      act(() => hook.result.current.change('new text'))
+      let result = true
+      await act(async () => {
+        result = await hook.result.current.flushAsync()
+      })
+      expect(result).toBe(false)
+      expect(onSaveFailed).toHaveBeenCalledWith('new text')
+      expect(hook.result.current.status).toBe('failed')
+      ok = true
+      await act(async () => {
+        result = await hook.result.current.flushAsync()
+      })
+      expect(result).toBe(true)
+      expect(onSaveSucceeded).toHaveBeenCalledTimes(1)
+      expect(save).toHaveBeenCalledTimes(2)
+      expect(hook.result.current.status).toBe('saved')
+    })
+
+    it('flushAsync is true when nothing is pending', async () => {
+      const hook = renderHook(() => useDraftField({ value: 'x', save: vi.fn() }))
+      await expect(hook.result.current.flushAsync()).resolves.toBe(true)
+    })
+
+    it('recovered text is shown, not saved and not overwritten until kept', async () => {
+      const save = vi.fn(() => Promise.resolve(true))
+      const hook = renderHook(
+        ({ value }: { value: string }) =>
+          useDraftField({ value, save, recovered: 'recovered text' }),
+        { initialProps: { value: 'saved text' } },
+      )
+      expect(hook.result.current.draft).toBe('recovered text')
+      expect(hook.result.current.status).toBe('recovered')
+      act(() => vi.advanceTimersByTime(2000))
+      expect(save).not.toHaveBeenCalled()
+      hook.rerender({ value: 'changed elsewhere' })
+      expect(hook.result.current.draft).toBe('recovered text')
+      // Leaving with an undecided recovered draft is allowed (it stays stored).
+      await expect(hook.result.current.flushAsync()).resolves.toBe(true)
+      await act(async () => hook.result.current.keepRecovered())
+      expect(save).toHaveBeenCalledExactlyOnceWith('recovered text')
+      expect(hook.result.current.status).toBe('saved')
+    })
+
+    it('discarding recovered text shows the saved value and reports it', () => {
+      const onDiscardRecovered = vi.fn()
+      const save = vi.fn()
+      const hook = renderHook(() =>
+        useDraftField({ value: 'saved', save, recovered: 'stale', onDiscardRecovered }),
+      )
+      act(() => hook.result.current.discardRecovered())
+      expect(hook.result.current.draft).toBe('saved')
+      expect(hook.result.current.status).toBe('saved')
+      expect(onDiscardRecovered).toHaveBeenCalledTimes(1)
+      act(() => vi.advanceTimersByTime(2000))
+      expect(save).not.toHaveBeenCalled()
+    })
+  })
 })

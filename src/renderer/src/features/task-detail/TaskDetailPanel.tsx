@@ -19,12 +19,19 @@ import {
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { MarkdownEditor } from '@/features/editor/MarkdownEditor'
+import {
+  clearUnsavedDraft,
+  defaultStorage,
+  recoverableDraft,
+  storeUnsavedDraft,
+  type DraftFieldName,
+} from '@/lib/draftRecovery'
 import { registerFlusher } from '@/lib/flush'
 import { cn } from '@/lib/utils'
 import { useToday } from '@/lib/useToday'
 import { useTagsById, useTask } from '@/stores/selectors'
 import { isTempId, useTasksStore } from '@/stores/tasksStore'
-import { useUiStore } from '@/stores/uiStore'
+import { setLeaveGuard, useUiStore } from '@/stores/uiStore'
 import { copyText } from './copyText'
 import { resolvedId, saveTaskPatch } from './saveTask'
 import { taskToMarkdown } from './taskMarkdown'
@@ -105,43 +112,128 @@ function PanelBody({ task }: { task: Task }) {
   const today = useToday()
   const tagsById = useTagsById()
 
+  // Unsaved text that could not be saved is kept in localStorage (lib/draftRecovery.ts) so a
+  // hide / quit / crash cannot lose it; opening the task offers it back (Keep / Discard).
+  const storage = defaultStorage()
+  const realId = (): string | null => {
+    const id = resolvedId(idRef.current)
+    return isTempId(id) ? null : id
+  }
+  const keepUnsaved = (field: DraftFieldName, text: string): void => {
+    const id = realId()
+    if (!id) return
+    storeUnsavedDraft(storage, {
+      taskId: id,
+      field,
+      text,
+      taskUpdatedAt: useTasksStore.getState().byId[id]?.updatedAt ?? 0,
+      storedAt: Date.now(),
+    })
+  }
+  const forgetUnsaved = (field: DraftFieldName): void => {
+    const id = realId()
+    if (id) clearUnsavedDraft(storage, id, field)
+  }
+  const [recovered] = useState(() => ({
+    title: recoverableDraft(storage, task, 'title', task.title),
+    description: recoverableDraft(storage, task, 'description', task.description),
+  }))
+
   const title = useDraftField({
     value: task.title,
     save: (v) => save({ title: v }),
     normalize: (v) => v.replace(/\s+/g, ' ').trim(),
     isValid: (v) => v.trim() !== '' && v.length <= MAX_TITLE_LENGTH,
+    onSaveFailed: (text) => keepUnsaved('title', text),
+    onSaveSucceeded: () => forgetUnsaved('title'),
+    recovered: recovered.title?.text ?? null,
+    onDiscardRecovered: () => forgetUnsaved('title'),
   })
   const description = useDraftField({
     value: task.description,
     save: (v) => save({ description: v }),
     isValid: (v) => v.length <= MAX_DESCRIPTION_LENGTH,
+    onSaveFailed: (text) => keepUnsaved('description', text),
+    onSaveSucceeded: () => forgetUnsaved('description'),
+    recovered: recovered.description?.text ?? null,
+    onDiscardRecovered: () => forgetUnsaved('description'),
   })
 
-  // Window hide / blur / reload are flush points too.
-  const flushRef = useRef(() => {})
+  // Latest field handles for the long-lived listeners below.
+  const fieldsRef = useRef({ title, description })
   useEffect(() => {
-    flushRef.current = () => {
-      title.flush()
-      description.flush()
-    }
+    fieldsRef.current = { title, description }
   })
+  const flush = (): Promise<unknown> => {
+    const f = fieldsRef.current
+    return Promise.all([f.title.flushAsync(), f.description.flushAsync()])
+  }
+
+  /**
+   * Saves everything before the panel closes, switches task or deletes it. True when nothing
+   * typed is left unsaved (after one retry); otherwise the panel must stay open.
+   */
+  const saveBeforeLeaving = async (): Promise<boolean> => {
+    const f = fieldsRef.current
+    if (f.title.status === 'invalid') f.title.commit() // an emptied title reverts, as on blur
+    if (f.description.status === 'invalid') {
+      toast.error('The description is too long to save', {
+        description: 'Shorten it first; the panel stays open so nothing you typed is lost.',
+      })
+      return false
+    }
+    const attempt = async (): Promise<boolean> =>
+      (await Promise.all([f.title.flushAsync(), f.description.flushAsync()])).every(Boolean)
+    const ok = (await attempt()) || (await attempt())
+    if (!ok) {
+      toast.error("Couldn't save your changes", {
+        description:
+          'The panel stays open so nothing you typed is lost. Use Retry, or try again in a moment.',
+      })
+    }
+    return ok
+  }
+  const leaveRef = useRef(saveBeforeLeaving)
   useEffect(() => {
-    const flush = (): void => flushRef.current()
+    leaveRef.current = saveBeforeLeaving
+  })
+  useEffect(
+    () =>
+      setLeaveGuard(() => {
+        const f = fieldsRef.current
+        return f.title.dirty || f.description.dirty ? leaveRef.current() : null
+      }),
+    [],
+  )
+
+  useEffect(() => {
+    const flushNow = (): void => void flush()
     const onVisibility = (): void => {
-      if (document.visibilityState === 'hidden') flush()
+      if (document.visibilityState === 'hidden') flushNow()
+    }
+    // A reload / crash recovery gives the answers no page to come back to: keep what is still
+    // unsaved now (an obsolete copy is dropped when the task is next opened).
+    const onUnload = (): void => {
+      const f = fieldsRef.current
+      for (const field of ['title', 'description'] as const) {
+        const d = f[field]
+        if (d.dirty && d.status !== 'recovered') keepUnsaved(field, d.draft)
+      }
+      flushNow()
     }
     const unregister = registerFlusher(flush) // main's hide/quit handshake
-    window.addEventListener('blur', flush)
-    window.addEventListener('beforeunload', flush)
-    window.addEventListener('pagehide', flush)
+    window.addEventListener('blur', flushNow)
+    window.addEventListener('beforeunload', onUnload)
+    window.addEventListener('pagehide', onUnload)
     document.addEventListener('visibilitychange', onVisibility)
     return () => {
       unregister()
-      window.removeEventListener('blur', flush)
-      window.removeEventListener('beforeunload', flush)
-      window.removeEventListener('pagehide', flush)
+      window.removeEventListener('blur', flushNow)
+      window.removeEventListener('beforeunload', onUnload)
+      window.removeEventListener('pagehide', onUnload)
       document.removeEventListener('visibilitychange', onVisibility)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reads only refs / stable helpers
   }, [])
 
   const isDone = task.status === 'done'
@@ -149,7 +241,7 @@ function PanelBody({ task }: { task: Task }) {
   const tags = task.tagIds.map((id) => tagsById[id]).filter((t) => t !== undefined)
 
   const copyMarkdown = async (): Promise<void> => {
-    flushRef.current()
+    void flush()
     const text = taskToMarkdown(
       {
         ...task,
@@ -162,9 +254,9 @@ function PanelBody({ task }: { task: Task }) {
     else toast.error("Couldn't copy to the clipboard")
   }
 
-  const remove = (): void => {
-    flushRef.current()
-    void deleteTaskWithUndo(idRef.current)
+  const remove = async (): Promise<void> => {
+    // Deleting would take unsaved text with it: save first, or stay.
+    if (await saveBeforeLeaving()) void deleteTaskWithUndo(idRef.current)
   }
 
   return (
@@ -226,6 +318,9 @@ function PanelBody({ task }: { task: Task }) {
             field="title"
             status={title.status}
             onRetry={title.retry}
+            onKeep={title.keepRecovered}
+            onDiscard={title.discardRecovered}
+            changedSince={recovered.title?.changedSince ?? false}
             hint={
               title.draft.length >= MAX_TITLE_LENGTH
                 ? `Titles can be at most ${MAX_TITLE_LENGTH.toLocaleString()} characters.`
@@ -311,6 +406,9 @@ function PanelBody({ task }: { task: Task }) {
           field="description"
           status={description.status}
           onRetry={description.retry}
+          onKeep={description.keepRecovered}
+          onDiscard={description.discardRecovered}
+          changedSince={recovered.description?.changedSince ?? false}
           invalidText={`Too long to save: ${description.draft.length.toLocaleString()} of ${MAX_DESCRIPTION_LENGTH.toLocaleString()} characters. Shorten it and it saves again.`}
           className="mx-5 mt-2"
         />
@@ -357,7 +455,7 @@ function PanelBody({ task }: { task: Task }) {
             <Copy className="size-3.5" />
             <span className="@max-[440px]/footer:sr-only">Copy as Markdown</span>
           </Button>
-          <IconAction label="Delete task" onClick={remove} destructive>
+          <IconAction label="Delete task" onClick={() => void remove()} destructive>
             <Trash2 />
           </IconAction>
         </div>
@@ -374,6 +472,9 @@ function DraftNotice({
   field,
   status,
   onRetry,
+  onKeep,
+  onDiscard,
+  changedSince,
   invalidText,
   hint,
   className,
@@ -381,10 +482,44 @@ function DraftNotice({
   field: string
   status: DraftStatus
   onRetry(): void
+  onKeep(): void
+  onDiscard(): void
+  /** Recovered text: the task was saved again after the text was kept. */
+  changedSince: boolean
   invalidText?: string
   hint?: string | null
   className?: string
 }) {
+  if (status === 'recovered') {
+    return (
+      <p
+        role="status"
+        data-testid={`${field}-recovered`}
+        className={cn(
+          'flex flex-wrap items-center gap-x-1.5 text-[12px] text-due-today',
+          className,
+        )}
+      >
+        <AlertCircle className="size-3.5 shrink-0" />
+        <span>Recovered unsaved text{changedSince ? ' (the task has changed since)' : ''}.</span>
+        <button
+          type="button"
+          className="font-medium underline underline-offset-2 hover:no-underline"
+          onClick={onKeep}
+        >
+          Keep
+        </button>
+        <span aria-hidden>·</span>
+        <button
+          type="button"
+          className="font-medium underline underline-offset-2 hover:no-underline"
+          onClick={onDiscard}
+        >
+          Discard
+        </button>
+      </p>
+    )
+  }
   if (status === 'failed') {
     return (
       <p

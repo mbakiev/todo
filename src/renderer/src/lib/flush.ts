@@ -4,10 +4,13 @@
 import { useTasksStore } from '@/stores/tasksStore'
 import { api } from './api'
 
-const flushers = new Set<() => void>()
+const flushers = new Set<() => void | Promise<unknown>>()
 
-/** Registers a synchronous "save pending edits now" callback. Returns an unregister function. */
-export function registerFlusher(flush: () => void): () => void {
+/**
+ * Registers a "save pending edits now" callback; it may return a promise that settles once
+ * its saves were answered. Returns an unregister function.
+ */
+export function registerFlusher(flush: () => void | Promise<unknown>): () => void {
   flushers.add(flush)
   return () => {
     flushers.delete(flush)
@@ -16,13 +19,17 @@ export function registerFlusher(flush: () => void): () => void {
 
 /** Runs every flusher and resolves once their writes have been acknowledged by main. */
 export async function flushPendingEdits(): Promise<void> {
+  const waits: Promise<unknown>[] = []
   for (const flush of flushers) {
     try {
-      flush()
+      const r = flush()
+      if (r) waits.push(r)
     } catch (err) {
       console.error('flush failed', err)
     }
   }
+  // Includes the drafts' own failure handling (e.g. keeping unsaved text in localStorage).
+  await Promise.allSettled(waits)
   await useTasksStore.getState().whenIdle()
 }
 
