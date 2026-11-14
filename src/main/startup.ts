@@ -7,20 +7,22 @@ import { openDatabase, type Repos } from './db'
 import { isTestRun, type AppPaths } from './paths'
 import { listBackups } from './services/backup'
 import {
-  classifyOpenError,
-  newestBackup,
-  restoreBackup,
+  openDatabaseWithRecoveryFlow,
   STARTUP_CHOICES,
-  startupDialogSpec,
   type StartupChoice,
   type StartupDialogSpec,
 } from './services/startupRecovery'
 
-/** e2e only (MARTIN_TODOS_E2E=1): answers the dialog without showing it. */
+/**
+ * e2e only (MARTIN_TODOS_E2E=1): answers the dialog without showing it. A comma-separated
+ * list answers successive dialogs in order (the last answer repeats).
+ */
 const CHOICE_ENV = 'MARTIN_TODOS_STARTUP_DIALOG_CHOICE'
+let stubAnswers = 0
 
 async function ask(spec: StartupDialogSpec): Promise<StartupChoice> {
-  const stub = isTestRun ? process.env[CHOICE_ENV] : undefined
+  const answers = isTestRun ? process.env[CHOICE_ENV]?.split(',') : undefined
+  const stub = answers ? answers[Math.min(stubAnswers++, answers.length - 1)]?.trim() : undefined
   if (stub !== undefined) {
     // Logged so e2e tests can assert which dialog was offered.
     console.log(`[startup-dialog] ${JSON.stringify(spec)} -> ${stub}`)
@@ -48,54 +50,22 @@ function restoreFailed(err: unknown): void {
 }
 
 /**
- * Returns the opened repos, or null when the app should quit (the user chose Quit / Reveal,
- * or a restore failed). Never deletes data.
+ * Returns the opened repos, or null when the app should quit (the user chose Quit, or a
+ * restore failed). Never deletes data. The flow itself: services/startupRecovery.ts.
  */
 export async function openDatabaseWithRecovery(paths: AppPaths): Promise<Repos | null> {
-  const tried = new Set<string>()
-
-  if (!existsSync(paths.dbFile) && listBackups(paths.backupsDir).length > 0) {
-    const backup = newestBackup(paths.backupsDir)
-    const choice = await ask(startupDialogSpec({ kind: 'missing_db' }, backup, paths.dataDir))
-    if (choice === 'quit') return null
-    if (choice === 'restore' && backup) {
-      try {
-        restoreBackup(paths.dbFile, backup.path)
-        tried.add(backup.path)
-      } catch (err) {
-        restoreFailed(err)
-        return null
-      }
-    }
-    // 'fresh': fall through and create an empty database.
-  }
-
-  for (;;) {
-    try {
-      return openDatabase({ path: paths.dbFile })
-    } catch (err) {
-      console.error('Could not open the database', err)
-      const cause = classifyOpenError(err)
-      const backup = cause === 'newer_version' ? null : newestBackup(paths.backupsDir, tried)
-      const error = err instanceof Error ? err.message : String(err)
-      const choice = await ask(
-        startupDialogSpec({ kind: 'open_failed', cause, error }, backup, paths.dataDir),
-      )
-      if (choice === 'restore' && backup) {
-        try {
-          restoreBackup(paths.dbFile, backup.path)
-          tried.add(backup.path)
-          continue // try again with the restored copy
-        } catch (restoreErr) {
-          restoreFailed(restoreErr)
-          return null
-        }
-      }
-      if (choice === 'reveal') {
-        const target = existsSync(paths.dataDir) ? paths.dataDir : paths.userData
-        if (!isTestRun) await shell.openPath(target)
-      }
-      return null
-    }
-  }
+  return openDatabaseWithRecoveryFlow({
+    dbFile: paths.dbFile,
+    backupsDir: paths.backupsDir,
+    dataDir: paths.dataDir,
+    open: () => openDatabase({ path: paths.dbFile }),
+    ask,
+    reveal: async () => {
+      const target = existsSync(paths.dataDir) ? paths.dataDir : paths.userData
+      if (!isTestRun) await shell.openPath(target)
+    },
+    restoreFailed,
+    exists: existsSync,
+    hasBackups: () => listBackups(paths.backupsDir).length > 0,
+  })
 }

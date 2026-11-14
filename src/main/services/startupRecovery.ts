@@ -14,9 +14,16 @@ import { listBackups, type BackupFile } from './backup'
 export type OpenFailureCause = 'newer_version' | 'locked' | 'corrupt'
 
 export type StartupProblem =
-  { kind: 'open_failed'; cause: OpenFailureCause; error: string } | { kind: 'missing_db' }
+  | {
+      kind: 'open_failed'
+      cause: OpenFailureCause
+      error: string
+      /** A plain sentence shown first (e.g. why the previous restore attempt failed). */
+      notice?: string
+    }
+  | { kind: 'missing_db' }
 
-export type StartupChoice = 'reveal' | 'restore' | 'fresh' | 'quit'
+export type StartupChoice = 'retry' | 'reveal' | 'restore' | 'fresh' | 'quit'
 
 export interface StartupDialogSpec {
   type: 'error' | 'warning' | 'question'
@@ -31,7 +38,13 @@ export interface StartupDialogSpec {
   cancelId: number
 }
 
-export const STARTUP_CHOICES: readonly StartupChoice[] = ['reveal', 'restore', 'fresh', 'quit']
+export const STARTUP_CHOICES: readonly StartupChoice[] = [
+  'retry',
+  'reveal',
+  'restore',
+  'fresh',
+  'quit',
+]
 
 const SQLITE_BUSY = 5
 const SQLITE_LOCKED = 6
@@ -92,6 +105,7 @@ export function startupDialogSpec(
   const reveal = { id: 'reveal' as const, label: 'Reveal data folder' }
   const quit = { id: 'quit' as const, label: 'Quit' }
   const technical = `Technical details: ${problem.error}`
+  const notice = problem.notice ?? ''
 
   if (problem.cause === 'newer_version') {
     // Restoring an older backup would silently drop whatever the newer version wrote.
@@ -110,36 +124,40 @@ export function startupDialogSpec(
     }
   }
 
-  const buttons = [reveal, ...restore, quit]
   if (problem.cause === 'locked') {
+    // No restore: a locked file cannot be moved aside (on Windows not at all), and the data in
+    // it is fine — it only needs the other program to let go.
+    const buttons = [{ id: 'retry' as const, label: 'Try again' }, reveal, quit]
     return {
       type: 'error',
       title: APP_DISPLAY_NAME,
       message: `${APP_DISPLAY_NAME} can't open your data because another program is using the file.`,
       detail: [
-        'Close any other copy of the app or any program that has the data file open (for example a backup or sync tool), then start the app again.',
-        backup
-          ? `Restoring the latest backup sets the locked file aside and starts from the backup instead. ${backupLine}`
-          : '',
+        notice,
+        'Close any other copy of the app or any program that has the data file open (for example a backup or sync tool), then choose Try again. Your data has not been changed.',
         technical,
       ]
         .filter(Boolean)
         .join('\n\n'),
       buttons,
-      defaultId: buttons.length - 1,
+      defaultId: 0,
       cancelId: buttons.length - 1,
     }
   }
+  const buttons = [reveal, ...restore, quit]
   return {
     type: 'error',
     title: APP_DISPLAY_NAME,
     message: `${APP_DISPLAY_NAME} can't read your data file. It may be damaged.`,
     detail: [
+      notice,
       backup
         ? `You can restore the latest backup. The damaged file is kept next to it (renamed to "todos.db.broken-…"), never deleted. ${backupLine}`
         : `No backup is available. The file has not been changed; you can reveal the data folder to look at it.`,
       technical,
-    ].join('\n\n'),
+    ]
+      .filter(Boolean)
+      .join('\n\n'),
     buttons,
     defaultId: backup ? buttons.findIndex((b) => b.id === 'restore') : buttons.length - 1,
     cancelId: buttons.length - 1,
@@ -163,6 +181,16 @@ function stamp(at: Date): string {
   )
 }
 
+/** Thrown by `restoreBackup` when the bad database could not be moved aside (nothing changed). */
+export class MoveAsideError extends Error {
+  constructor(readonly reason: unknown) {
+    super(
+      "The damaged data file couldn't be moved aside (another program may be using it), so the backup was not restored. Nothing has been changed.",
+    )
+    this.name = 'MoveAsideError'
+  }
+}
+
 export interface RestoreResult {
   restoredFrom: string
   /** Where the old database (and its -wal / -shm) now live. Empty if there was none. */
@@ -182,16 +210,113 @@ export function restoreBackup(
   if (!existsSync(backupPath)) throw new Error(`Backup not found: ${backupPath}`)
   let base = `${dbFile}.broken-${stamp(new Date(now))}`
   for (let i = 1; existsSync(base); i++) base = `${dbFile}.broken-${stamp(new Date(now))}-${i}`
-  const movedAside: string[] = []
-  // Main file first: if it cannot be moved (locked), nothing else has changed yet.
-  for (const suffix of ['', '-wal', '-shm']) {
-    const from = `${dbFile}${suffix}`
-    if (!existsSync(from)) continue
-    const to = `${base}${suffix}`
-    renameSync(from, to)
-    movedAside.push(to)
+  const moved: Array<{ from: string; to: string }> = []
+  // Main file first. If any file cannot be moved, the ones already moved are put back, so a
+  // failure leaves everything exactly as it was.
+  try {
+    for (const suffix of ['', '-wal', '-shm']) {
+      const from = `${dbFile}${suffix}`
+      if (!existsSync(from)) continue
+      const to = `${base}${suffix}`
+      renameSync(from, to)
+      moved.push({ from, to })
+    }
+  } catch (err) {
+    for (const m of moved.reverse()) {
+      try {
+        renameSync(m.to, m.from)
+      } catch (undoErr) {
+        console.error('Could not put a moved database file back', m, undoErr)
+      }
+    }
+    throw new MoveAsideError(err)
   }
+  const movedAside = moved.map((m) => m.to)
   mkdirSync(dirname(dbFile), { recursive: true })
   copyFileSync(backupPath, dbFile)
   return { restoredFrom: backupPath, movedAside }
+}
+
+export interface RecoveryDeps<T> {
+  dbFile: string
+  backupsDir: string
+  dataDir: string
+  /** Opens (and migrates) the database; throws when it cannot. */
+  open(): T
+  ask(spec: StartupDialogSpec): Promise<StartupChoice>
+  reveal(): Promise<void>
+  /** A restore failed for a reason other than moving the file aside: tell the user. */
+  restoreFailed(err: unknown): void
+  exists(path: string): boolean
+  hasBackups(): boolean
+}
+
+/**
+ * Opens the database, asking the user when that fails (or the file is missing while backups
+ * exist). Returns null when the app should quit. Never deletes data.
+ *
+ * - Locked by another program: Try again (as often as needed) / Reveal data folder (then
+ *   asks again) / Quit. No restore.
+ * - Damaged: Reveal / Restore latest backup / Quit. If the damaged file cannot be moved
+ *   aside, the dialog comes back saying so; nothing has changed.
+ * - Newer version: Reveal / Quit.
+ */
+export async function openDatabaseWithRecoveryFlow<T>(deps: RecoveryDeps<T>): Promise<T | null> {
+  const tried = new Set<string>()
+
+  if (!deps.exists(deps.dbFile) && deps.hasBackups()) {
+    const backup = newestBackup(deps.backupsDir)
+    const choice = await deps.ask(startupDialogSpec({ kind: 'missing_db' }, backup, deps.dataDir))
+    if (choice === 'quit') return null
+    if (choice === 'restore' && backup) {
+      try {
+        restoreBackup(deps.dbFile, backup.path)
+        tried.add(backup.path)
+      } catch (err) {
+        deps.restoreFailed(err)
+        return null
+      }
+    }
+    // 'fresh': fall through and create an empty database.
+  }
+
+  let notice: string | undefined
+  for (;;) {
+    let err: unknown
+    try {
+      return deps.open()
+    } catch (e) {
+      err = e
+    }
+    console.error('Could not open the database', err)
+    const cause = classifyOpenError(err)
+    const backup = cause === 'corrupt' ? newestBackup(deps.backupsDir, tried) : null
+    const error = err instanceof Error ? err.message : String(err)
+    const problem = { kind: 'open_failed' as const, cause, error, notice }
+    notice = undefined
+    const choice = await deps.ask(startupDialogSpec(problem, backup, deps.dataDir))
+    if (choice === 'retry') continue
+    if (choice === 'restore' && backup) {
+      try {
+        restoreBackup(deps.dbFile, backup.path)
+        tried.add(backup.path)
+      } catch (restoreErr) {
+        if (restoreErr instanceof MoveAsideError) {
+          console.error('Could not move the damaged database aside', restoreErr.reason)
+          notice = restoreErr.message
+          continue // nothing changed: the same dialog again, saying why
+        }
+        // The file was moved aside but the copy failed: opening now would silently start an
+        // empty database, so stop (as before) after telling the user.
+        deps.restoreFailed(restoreErr)
+        return null
+      }
+      continue // open the restored copy
+    }
+    if (choice === 'reveal') {
+      await deps.reveal()
+      if (cause === 'locked') continue // let them close the other program, then Try again
+    }
+    return null
+  }
 }
