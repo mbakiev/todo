@@ -560,7 +560,8 @@ no theme gallery.
   `{{TAG}}`, `{{REPOSITORY}}` filled in) followed by GitHub's generated change list. Only
   that last job has `contents: write`.
 - Node for CI comes from `.nvmrc` (24, the Node bundled in Electron 45); `engines` stays
-  `>=22.12.0`. `codeql.yml` (JS/TS, weekly too) and `dependabot.yml` complete the set.
+  `>=22.16.0` (the first Node 22 whose `node:sqlite` has `isTransaction`, which `Db.transaction`
+  relies on). `codeql.yml` (JS/TS, weekly too) and `dependabot.yml` complete the set.
 
 ## 12. Engineering conventions
 
