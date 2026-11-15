@@ -1,9 +1,12 @@
 // @vitest-environment node
 import {
   chmodSync,
+  closeSync,
+  constants,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readdirSync,
   rmSync,
   writeFileSync,
@@ -16,6 +19,7 @@ import { migrate } from '../db/migrate'
 import { takeBackup } from './backup'
 import {
   classifyOpenError,
+  explainOpenError,
   MoveAsideError,
   newestBackup,
   openDatabaseWithRecoveryFlow,
@@ -39,6 +43,16 @@ function blockRename(dir: string, file: string): () => void {
   }
   chmodSync(dir, 0o555)
   return () => chmodSync(dir, 0o755)
+}
+
+/**
+ * Windows only: opens `file` the way a program that does not share it does (CreateFile with no
+ * share flags; some backup / sync tools, antivirus, editors). libuv's UV_FS_O_EXLOCK, which
+ * Node does not export as a constant. Returns the fd to close.
+ */
+function holdExclusively(file: string): number {
+  const UV_FS_O_EXLOCK = 0x10000000
+  return openSync(file, constants.O_RDWR | UV_FS_O_EXLOCK)
 }
 
 const ids = (spec: StartupDialogSpec): string[] => spec.buttons.map((b) => b.id)
@@ -81,6 +95,47 @@ describe('classifyOpenError', () => {
     expect(classifyOpenError(err)).toBe('corrupt')
     rmSync(dir, { recursive: true, force: true })
   })
+})
+
+describe('explainOpenError', () => {
+  let dir: string
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'mt-explain-'))
+  })
+  afterEach(() => rmSync(dir, { recursive: true, force: true }))
+
+  it('leaves other errors, and "unable to open" on a file nobody holds, unchanged', () => {
+    const file = join(dir, 'todos.db')
+    writeFileSync(file, '')
+    const notDb = Object.assign(new Error('file is not a database'), { errcode: 26 })
+    expect(explainOpenError(notDb, file)).toBe(notDb)
+    const cantOpen = Object.assign(new Error('unable to open database file'), { errcode: 14 })
+    expect(explainOpenError(cantOpen, file)).toBe(cantOpen)
+    expect(explainOpenError(cantOpen, join(dir, 'missing.db'))).toBe(cantOpen)
+  })
+
+  it.skipIf(process.platform !== 'win32')(
+    'a file another program holds without sharing it (Windows) is "locked", not "corrupt"',
+    () => {
+      const file = join(dir, 'todos.db')
+      openDatabase({ path: file }).db.close()
+      const fd = holdExclusively(file)
+      try {
+        let err: unknown
+        try {
+          openDatabase({ path: file }).db.close()
+        } catch (e) {
+          err = e
+        }
+        // SQLite itself only says SQLITE_CANTOPEN.
+        expect((err as { errcode?: unknown }).errcode).toBe(14)
+        expect(classifyOpenError(err)).toBe('corrupt')
+        expect(classifyOpenError(explainOpenError(err, file))).toBe('locked')
+      } finally {
+        closeSync(fd)
+      }
+    },
+  )
 })
 
 describe('startupDialogSpec', () => {
@@ -287,6 +342,33 @@ describe('openDatabaseWithRecoveryFlow', () => {
     expect(d.reveals).toBe(1)
     expect(d.asked).toHaveLength(2)
   })
+
+  it.skipIf(process.platform !== 'win32')(
+    'locked (Windows): a file held without sharing offers Try again, not restore',
+    async () => {
+      const dbFile = join(dir, 'data', 'todos.db')
+      openDatabase({ path: dbFile }).db.close()
+      let fd: number | null = holdExclusively(dbFile)
+      const d = deps(() => {
+        openDatabase({ path: dbFile }).db.close()
+        return 'repos'
+      }, ['retry'])
+      const ask = d.ask
+      d.ask = async (spec) => {
+        // The other program lets go while the dialog is up.
+        if (fd !== null) closeSync(fd)
+        fd = null
+        return ask(spec)
+      }
+      try {
+        expect(await openDatabaseWithRecoveryFlow(d)).toBe('repos')
+      } finally {
+        if (fd !== null) closeSync(fd)
+      }
+      expect(d.asked.map((s) => ids(s))).toEqual([['retry', 'reveal', 'quit']])
+      expect(d.asked[0]?.message).toMatch(/another program is using the file/)
+    },
+  )
 
   it('damaged: a failed move-aside returns to the dialog saying so (no raw error, no exit)', async () => {
     const src = openDatabase({ path: join(dir, 'src.db') })
