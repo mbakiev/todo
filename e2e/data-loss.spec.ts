@@ -146,6 +146,8 @@ test('Windows sign-out saves pending edits and does not hold up the sign-out', a
   const sender = await startSessionEndSender()
   const s = shell
   shell = undefined // after session-end the app is killed, not closed: see `finally`
+  // Taken while the app is up: `app.process()` throws once the app has gone.
+  const proc = s.app.process()
   const saved = async (): Promise<boolean> =>
     (await dbTasks(s.page)).some((t) => t.title.includes('logoff'))
   try {
@@ -161,14 +163,18 @@ test('Windows sign-out saves pending edits and does not hold up the sign-out', a
     expect(answer.query, 'answered WM_QUERYENDSESSION with "go ahead"').toBe(1)
     expect(answer.end, 'handled WM_ENDSESSION without hanging').not.toBeNull()
     // The flush that WM_QUERYENDSESSION started may still be on its way. Windows kills the
-    // process some time after WM_ENDSESSION, here once the edit is in the DB — or the DB is
-    // closed already (`tasks.list` fails), which the app does only after that flush.
+    // process some time after WM_ENDSESSION, here once the edit is in the DB — or it can no
+    // longer be asked (`tasks.list` fails): the DB is closed, which the app does only after
+    // that flush, or the app has exited by itself.
     await expect.poll(() => saved().catch(() => true)).toBe(true)
   } finally {
     sender.kill()
-    // Windows ends the process without further notice.
-    s.app.process().kill()
-    await waitForExit(s)
+    // Windows ends the process without further notice, unless it is gone already.
+    if (proc.exitCode === null && proc.signalCode === null) {
+      const exited = new Promise<void>((done) => proc.once('exit', () => done()))
+      proc.kill()
+      await exited
+    }
   }
   shell = await launchShell({ userData })
   expect((await dbTasks(shell.page)).some((t) => t.title.includes('logoff'))).toBe(true)
