@@ -80,11 +80,9 @@ layouts (3.11, likely a product decision); the tray icon on a light taskbar and 
 ## 0. Prerequisites
 
 - [x] Windows 10 22H2 or Windows 11, x64.
-- [x] Node **22.16+** (`node -v`) and npm (bundled); CI uses 24 (`.nvmrc`). On 22.12–22.15
-      the app itself is fine (it runs on Electron's Node 24) but 11 DB unit tests fail:
-      `node:sqlite` there has no `isTransaction`, so `Db.transaction` never rolls back. No
-      Python / Visual Studio build tools needed: the app has no native modules (SQLite is
-      Node's built-in `node:sqlite`).
+- [x] Node **24.15+** (`node -v`) and npm (bundled); CI uses 24 (`.nvmrc`), the Node bundled
+      in Electron 45. No Python / Visual Studio build tools needed: the app has no native
+      modules (SQLite is Node's built-in `node:sqlite`).
 - [x] Behind a TLS-inspecting corporate proxy (Netskope, Zscaler…) `npm ci` fails with
       `SELF_SIGNED_CERT_IN_CHAIN` (npm may only print "Exit handler never called!"). If the
       proxy's root CA is in the Windows certificate store, set `NODE_OPTIONS=--use-system-ca`

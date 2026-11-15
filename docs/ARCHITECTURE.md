@@ -25,7 +25,7 @@ on Windows without redesign (no mac-only APIs without a Windows branch).
 | Language | TypeScript, `strict: true`, everywhere (pinned to 6.0.x: `typescript-eslint` does not yet support TS 7) |
 | UI | React, Tailwind CSS v4, shadcn/ui (Radix primitives), `lucide-react` icons |
 | Client state | Zustand. Renderer holds the full task list in memory; main process is the source of truth |
-| Storage | SQLite in the main process, WAL mode. **Driver: Node's built-in `node:sqlite`** (zero native deps → painless Windows handover; verified in Electron 45's main process in dev and production builds, and under Vitest on Node 22). Fallback only if it demonstrably does not work in Electron's main process: `better-sqlite3` + `@electron/rebuild`. All access goes through a thin `Db` wrapper in `src/main/db/connection.ts` so the driver is swappable |
+| Storage | SQLite in the main process, WAL mode. **Driver: Node's built-in `node:sqlite`** (zero native deps → painless Windows handover; verified in Electron 45's main process in dev and production builds, and under Vitest on Node 24). Fallback only if it demonstrably does not work in Electron's main process: `better-sqlite3` + `@electron/rebuild`. All access goes through a thin `Db` wrapper in `src/main/db/connection.ts` so the driver is swappable |
 | Migrations | Plain SQL/TS migrations, versioned by `PRAGMA user_version`, run at startup inside a transaction |
 | Validation | `zod` schemas in `src/shared` for every IPC payload and for import files |
 | Rich text | Tiptap (v3). **Descriptions are stored as Markdown (GFM)**, not HTML/JSON |
@@ -565,9 +565,11 @@ no theme gallery.
   notes are `.github/release-notes.md` (download table, first-launch steps; `{{VERSION}}`,
   `{{TAG}}`, `{{REPOSITORY}}` filled in) followed by GitHub's generated change list. Only
   that last job has `contents: write`.
-- Node for CI comes from `.nvmrc` (24, the Node bundled in Electron 45); `engines` stays
-  `>=22.16.0` (the first Node 22 whose `node:sqlite` has `isTransaction`, which `Db.transaction`
-  relies on). `codeql.yml` (JS/TS, weekly too) and `dependabot.yml` complete the set.
+- Node for CI comes from `.nvmrc` (24, the Node bundled in Electron 45, so the unit tests run
+  on the `node:sqlite` the app ships with); `engines` is `>=24.15.0` (the lowest Node 24 the
+  toolchain accepts). `.nvmrc`, `engines` and `@types/node` move together with Electron when
+  it adopts a newer Node. `codeql.yml` (JS/TS, weekly too) and `dependabot.yml` complete the
+  set.
 
 ## 12. Engineering conventions
 
