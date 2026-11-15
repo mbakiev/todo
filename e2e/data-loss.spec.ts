@@ -5,6 +5,7 @@ import type { Api } from '../src/shared/ipc'
 import type { Task } from '../src/shared/types'
 import { caretToEnd } from './launch'
 import { hook, launchShell, tempUserData, type ShellApp } from './shellHelpers'
+import { mainWindowHandle, startSessionEndSender } from './windowsSessionEnd'
 
 let shell: ShellApp | undefined
 
@@ -134,6 +135,29 @@ test('SIGTERM saves pending edits before exiting', async () => {
   await waitForExit(s)
   shell = await launchShell({ userData })
   expect((await dbTasks(shell.page)).some((t) => t.title.includes('sigterm'))).toBe(true)
+})
+
+test('Windows sign-out saves pending edits and does not hold up the sign-out', async () => {
+  test.skip(process.platform !== 'win32', 'WM_QUERYENDSESSION / WM_ENDSESSION are Windows only')
+  const userData = tempUserData()
+  shell = await launchShell({ userData, seed: true })
+  await openTask(shell.page, TASK)
+  const hwnd = await mainWindowHandle(shell.app)
+  const sender = await startSessionEndSender() // PowerShell starts slower than the debounce
+  await typeTitle(shell.page, ' logoff')
+  // Still inside the debounce: only the session-end flush can save it.
+  expect((await dbTasks(shell.page)).some((t) => t.title.includes('logoff'))).toBe(false)
+  const s = shell
+  shell = undefined
+  // Back to back, the tightest Windows can do (it sends WM_ENDSESSION once every app answered).
+  const answer = await sender.fire(hwnd, 0)
+  expect(answer.query, 'answered WM_QUERYENDSESSION with "go ahead"').toBe(1)
+  expect(answer.end, 'handled WM_ENDSESSION without hanging').not.toBeNull()
+  // Windows now ends the process without further notice.
+  s.app.process().kill()
+  await waitForExit(s)
+  shell = await launchShell({ userData })
+  expect((await dbTasks(shell.page)).some((t) => t.title.includes('logoff'))).toBe(true)
 })
 
 test('a failed save keeps the panel open (close, Esc, switch, delete) and saves once it works', async () => {
