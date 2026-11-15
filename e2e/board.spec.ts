@@ -4,7 +4,7 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import type { Api } from '../src/shared/ipc'
-import { launchApp, resizeMainWindow, type LaunchedApp } from './launch'
+import { launchApp, pickUpWithKeyboard, resizeMainWindow, type LaunchedApp } from './launch'
 
 const OUT = join(__dirname, 'screenshots')
 let launched: LaunchedApp
@@ -269,22 +269,54 @@ test('inline add parses tokens; input stays open for the next task', async () =>
   await expect(card).toHaveAttribute('data-selected', 'true')
 })
 
-test('keyboard: Space picks up, arrows move, Space drops', async () => {
-  launched = await launchApp({ seed: true })
-  const { page } = launched
-  await setSize(launched)
-  await ready(page)
+/**
+ * Makes the page's `setTimeout` callbacks run late (in order, every `lagMs`) while input
+ * and rendering carry on: how timers behaved on the macOS CI runners where the keyboard
+ * drag test lost its first arrow key. Deterministic on any machine.
+ */
+async function lagTimers(page: Page, lagMs: number): Promise<void> {
+  await page.evaluate((lag) => {
+    const g = globalThis as unknown as {
+      setTimeout: (fn: (...args: unknown[]) => void, ms?: number, ...args: unknown[]) => number
+      requestAnimationFrame(fn: () => void): number
+      performance: { now(): number }
+    }
+    const queue: Array<() => void> = []
+    let last = g.performance.now()
+    const pump = (): void => {
+      if (g.performance.now() - last >= lag) {
+        last = g.performance.now()
+        for (const run of queue.splice(0)) run()
+      }
+      g.requestAnimationFrame(pump)
+    }
+    g.requestAnimationFrame(pump)
+    g.setTimeout = (fn, _ms, ...args) => {
+      queue.push(() => fn(...args))
+      return 0
+    }
+  }, lagMs)
+}
 
-  const card = cards(page, 'not_started').first()
-  const id = await card.getAttribute('data-task-id')
-  await card.focus()
-  await page.keyboard.press('Space')
-  await page.waitForTimeout(150)
-  await page.keyboard.press('ArrowRight')
-  await page.waitForTimeout(250)
-  await page.keyboard.press('Space')
-  await expect(column(page, 'in_progress').locator(`[data-task-id="${id}"]`)).toBeVisible()
-})
+for (const lag of [0, 300]) {
+  test(`keyboard: Space picks up, arrows move, Space drops${lag ? ` (timers ${lag} ms late)` : ''}`, async () => {
+    launched = await launchApp({ seed: true })
+    const { page } = launched
+    await setSize(launched)
+    await ready(page)
+    if (lag) await lagTimers(page, lag)
+
+    const id = await cards(page, 'not_started').first().getAttribute('data-task-id')
+    const card = column(page, 'not_started').locator(`[data-task-id="${id}"]`)
+    await pickUpWithKeyboard(page, card)
+    await page.keyboard.press('ArrowRight')
+    await expect(
+      page.locator('[data-testid="board-today"] [data-column="in_progress"][data-drop-target]'),
+    ).toBeVisible()
+    await page.keyboard.press('Space')
+    await expect(column(page, 'in_progress').locator(`[data-task-id="${id}"]`)).toBeVisible()
+  })
+}
 
 test('sort selection persists per board', async () => {
   launched = await launchApp({ seed: true })

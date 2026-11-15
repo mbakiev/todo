@@ -114,7 +114,9 @@ On Everything, the Done column ends with a **Show … more** button when there i
 ## 5. Open a task
 
 Click a task in any view to open it. The view stays usable underneath; drag the panel's left
-edge to resize it, and press `Esc` or × to close it.
+edge to resize it, and press `Esc` or × to close it. Clicking empty space in the view (not a
+task or a control) closes it too; on the calendar that first click only closes the panel, and
+the next click on an empty day starts a new task as usual.
 
 ![The detail panel: title, status, priority, start and due dates, tags, and a description with a paragraph, a table, a half-ticked checklist and a link](screenshots/detail-panel.png)
 

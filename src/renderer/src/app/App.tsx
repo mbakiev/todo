@@ -10,6 +10,7 @@ import { Sidebar } from './Sidebar'
 import { Toolbar } from './Toolbar'
 import { ToolbarSlotContext } from './toolbarSlotContext'
 import { useShellShortcuts } from './useShellShortcuts'
+import { useEmptySpaceDeselect } from './useEmptySpaceDeselect'
 import { useShortcutFailureToast } from './useShortcutFailureToast'
 import { ViewSwitch } from './ViewSwitch'
 
@@ -23,6 +24,8 @@ export function App() {
   useShortcutFailureToast()
   const [toolbarSlot, setToolbarSlot] = useState<HTMLElement | null>(null)
   const selectedTaskId = useUiStore((s) => s.selectedTaskId)
+  // Clicking empty space in the view closes the detail panel (spec §7).
+  const { viewRef, onViewClickCapture } = useEmptySpaceDeselect()
 
   return (
     <TooltipProvider delayDuration={400}>
@@ -31,7 +34,12 @@ export function App() {
           <Sidebar />
           <main className="flex min-w-0 flex-1 flex-col">
             <Toolbar slotRef={setToolbarSlot} />
-            <div className="relative min-h-0 flex-1" data-slot="view">
+            <div
+              ref={viewRef}
+              className="relative min-h-0 flex-1"
+              data-slot="view"
+              onClickCapture={onViewClickCapture}
+            >
               <ViewSwitch />
             </div>
           </main>
