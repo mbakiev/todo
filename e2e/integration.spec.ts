@@ -348,13 +348,24 @@ test('settings apply live: theme (incl. quick add), week start, tag recolour/ren
   await page.evaluate(() => (globalThis as unknown as W).api.settings.set({ weekStartsOn: 0 }))
   await expect(firstHeader).toHaveText(/sun/i)
 
-  // Week board: with a Sunday start the week ends on Saturday.
-  const sat = addDays(today, (6 - new Date().getDay() + 7) % 7)
-  await createTask(page, { title: 'On the week edge', startDate: addDays(sat, 1) })
+  // Week board: the two week starts disagree about exactly one stretch of days, and which
+  // one depends on today. Monday to Saturday: a Sunday-start week ends this Saturday and a
+  // Monday-start week ends the day after, so the coming Sunday is only in the Monday-start
+  // week. On a Sunday it is the other way round: the Sunday-start week has just begun (it
+  // runs to Saturday) while the Monday-start week ends today, so tomorrow is only in the
+  // Sunday-start week.
+  const weekday = new Date().getDay()
+  const onSunday = weekday === 0
+  const edge = onSunday ? addDays(today, 1) : addDays(today, 7 - weekday)
+  const edgeItem = item(page, 'week', 'On the week edge')
+  await createTask(page, { title: 'On the week edge', startDate: edge })
   await show(page, 'week')
-  await expect(item(page, 'week', 'On the week edge')).toHaveCount(0)
+  // Still weekStartsOn: 0 (Sunday) from above.
+  if (onSunday) await expect(edgeItem).toBeVisible()
+  else await expect(edgeItem).toHaveCount(0)
   await page.evaluate(() => (globalThis as unknown as W).api.settings.set({ weekStartsOn: 1 }))
-  await expect(item(page, 'week', 'On the week edge')).toBeVisible()
+  if (onSunday) await expect(edgeItem).toHaveCount(0)
+  else await expect(edgeItem).toBeVisible()
 
   // Tags: recolour and rename reach cards live.
   const tags = await page.evaluate(() => (globalThis as unknown as W).api.tags.list())
