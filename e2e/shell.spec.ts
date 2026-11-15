@@ -225,8 +225,15 @@ test('quick add opens on the display under the cursor, also after a focus-return
     screen.getDisplayNearestPoint = () => other
     return other.workArea
   })
-  await hook(app, 'triggerShortcut', 'quickAdd')
-  await expect.poll(() => windowVisible(app, 'quick-add')).toBe(true)
+  // Asked again while it is not showing: on macOS a show within milliseconds of the hide (no
+  // user is that fast) can lose focus again to the hide's own focus change, and the popup
+  // hides on blur.
+  await expect
+    .poll(async () => {
+      if (!(await windowVisible(app, 'quick-add'))) await hook(app, 'triggerShortcut', 'quickAdd')
+      return windowVisible(app, 'quick-add')
+    })
+    .toBe(true)
   const bounds = await app.evaluate(({ BrowserWindow }) => {
     const win = BrowserWindow.getAllWindows().find((w) =>
       w.webContents.getURL().split(/[?#]/)[0]?.endsWith('/quick-add.html'),
