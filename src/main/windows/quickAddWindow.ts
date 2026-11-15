@@ -156,10 +156,13 @@ export function showQuickAdd(ctx: AppContext): void {
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
   const [width = QUICK_ADD_WIDTH, height = INITIAL_HEIGHT] = win.getSize()
   const { x, y } = quickAddPosition(display.workArea, { width, height })
-  win.setBounds({ x, y, width, height })
-  // Windows: moving between monitors with different DPI can scale the size; re-apply it.
-  if (process.platform === 'win32') win.setSize(width, height)
-  prepareToShow(win)
+  // Positioned inside prepareToShow: on Windows the popup is still minimized from the last
+  // hide, and bounds set before the restore are lost (it reopened on the previous monitor).
+  prepareToShow(win, () => {
+    win.setBounds({ x, y, width, height })
+    // Windows: moving between monitors with different DPI can scale the size; re-apply it.
+    if (process.platform === 'win32') win.setSize(width, height)
+  })
   win.show()
   win.focus()
   win.webContents.focus()

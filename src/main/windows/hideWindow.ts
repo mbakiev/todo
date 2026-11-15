@@ -24,11 +24,18 @@ export function hideWindowReturningFocus(win: BrowserWindow): void {
   win.hide()
 }
 
-/** Undoes the Windows minimize trick above; call before showing. */
-export function prepareToShow(win: BrowserWindow): void {
-  if (process.platform === 'win32' && win.isMinimized()) {
+/**
+ * Undoes the Windows minimize trick above; call before showing. `place` (re)positions the
+ * window: bounds set while it is still minimized are lost (`restore()` puts it back where it
+ * was), and `restore()` already makes it visible, so it runs after the restore but while the
+ * window is still transparent.
+ */
+export function prepareToShow(win: BrowserWindow, place?: () => void): void {
+  const restoring = process.platform === 'win32' && win.isMinimized()
+  if (restoring) {
     win.setOpacity(0)
     win.restore()
-    win.setOpacity(1)
   }
+  place?.()
+  if (restoring) win.setOpacity(1)
 }
