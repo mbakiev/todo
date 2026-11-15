@@ -71,7 +71,7 @@ jobs:
           for f in \
             "MartinsToDos-$version-mac-arm64.dmg" "MartinsToDos-$version-mac-arm64.zip" \
             "MartinsToDos-$version-mac-x64.dmg" "MartinsToDos-$version-mac-x64.zip" \
-            "MartinsToDos-$version-win-x64-setup.exe"; do
+            "MartinsToDos-$version-win-x64-setup.exe" "MartinsToDos-$version-win-arm64-setup.exe"; do
             if [ ! -f "dist/$f" ]; then echo "::error::missing $f"; exit 1; fi
           done
       - name: Write checksums

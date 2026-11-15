@@ -24,11 +24,19 @@ jobs:
             files: |
               release/*/*.dmg
               release/*/*.zip
+          # Each Windows arch is built on its own hardware, so the smoke and install tests
+          # below run the exact installer that gets uploaded. windows-11-arm is GitHub's
+          # Arm64 runner (free for public repositories).
           - os: windows-latest
-            dist: dist:win
-            artifact: installers-windows
+            dist: dist:win:x64
+            artifact: installers-windows-x64
             files: |
-              release/*/*-setup.exe
+              release/*/*-win-x64-setup.exe
+          - os: windows-11-arm
+            dist: dist:win:arm64
+            artifact: installers-windows-arm64
+            files: |
+              release/*/*-win-arm64-setup.exe
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -51,8 +59,10 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $setup = Get-ChildItem release/*/*-setup.exe | Select-Object -First 1
-          Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait
+          # Exactly one installer, so the one tested here is the one uploaded below.
+          $setup = @(Get-ChildItem release/*/*-setup.exe)
+          if ($setup.Count -ne 1) { throw "expected one installer, found $($setup.Count): $($setup.Name -join ', ')" }
+          Start-Process -FilePath $setup[0].FullName -ArgumentList '/S' -Wait
           $dir = Join-Path $env:LOCALAPPDATA 'Programs\Martins To Dos'
           $exe = Join-Path $dir 'Martins To Dos.exe'
           if (-not (Test-Path $exe)) { throw "installed app not found: $exe" }

@@ -54,9 +54,13 @@ dmg:
 
 win:
   icon: build/icon.ico
+  # x64 and arm64 (Windows on Arm, e.g. Snapdragon), one installer each (see
+  # nsis.buildUniversalInstaller). A bare `--x64` / `--arm64` on the command line does not
+  # narrow this list; to build one arch, name the target too: `electron-builder --win nsis
+  # --arm64` (`dist:win:x64` / `dist:win:arm64` in package.json, used by CI).
   target:
     - target: nsis
-      arch: [x64]
+      arch: [x64, arm64]
   # Unsigned (no certificate); SmartScreen will warn on first run — see WINDOWS_HANDOVER.md.
   signAndEditExecutable: true
 nsis:
@@ -73,6 +77,11 @@ nsis:
   deleteAppDataOnUninstall: false
   installerIcon: build/icon.ico
   uninstallerIcon: build/icon.ico
+  # A separate installer per arch (…-win-x64-setup.exe, …-win-arm64-setup.exe) and nothing
+  # else. Without this, electron-builder builds those two plus a third, combined installer
+  # that carries both apps and has no arch in its name. The arm64 installer refuses to run on
+  # an Intel/AMD PC (customInit in build/installer.nsh).
+  buildUniversalInstaller: false
   artifactName: MartinsToDos-${version}-win-${arch}-setup.${ext}
 
 publish: null
