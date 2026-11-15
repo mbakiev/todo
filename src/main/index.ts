@@ -116,7 +116,7 @@ async function bootstrap(): Promise<void> {
       ctx.quitting = true
       quitGate.sessionEnding()
     },
-    sessionEnded: () => quitGate.finalize(),
+    sessionEnded: () => quitGate.sessionEnded(),
   }
 
   app.on('before-quit', (event) => {

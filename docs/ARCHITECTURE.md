@@ -484,6 +484,11 @@ unit-tested `services/startupRecovery.ts`). The process never lingers without a 
 
   Quit (and Reveal, except for "locked") quits; so does a backup copy that fails after the
   file was moved aside. The loop: `openDatabaseWithRecoveryFlow` (`services/startupRecovery.ts`).
+  Windows: a file another program holds open without sharing makes SQLite fail with a generic
+  "unable to open database file", so a plain open of the file and its -wal / -shm (EBUSY =
+  sharing violation) decides between locked and damaged (`explainOpenError`). Reveal there
+  starts `explorer.exe <folder>` as its own process: `shell.openPath` followed by the
+  immediate quit opens nothing.
 - **DB file missing but backups exist** → **Restore latest backup** / **Start fresh** /
   **Quit**, instead of silently creating an empty database.
 - Any other startup exception shows an error box and exits.
@@ -499,7 +504,8 @@ unit-tested `services/startupRecovery.ts`). The process never lingers without a 
   (`main/quitGate.ts`): the quit is held until the main window's renderer has saved pending
   edits (≤ 1.5 s), repeated quit requests during that wait are held too, and the DB is closed
   exactly once afterwards. Windows logoff / shutdown (no `before-quit`) starts the flush on
-  `query-session-end` and closes the DB on `session-end`.
+  `query-session-end` and closes the DB on `session-end` (once that flush has settled, if it
+  is still running).
 
 ### Environment variables
 | Variable | Effect |
@@ -560,7 +566,8 @@ no theme gallery.
   `{{TAG}}`, `{{REPOSITORY}}` filled in) followed by GitHub's generated change list. Only
   that last job has `contents: write`.
 - Node for CI comes from `.nvmrc` (24, the Node bundled in Electron 45); `engines` stays
-  `>=22.12.0`. `codeql.yml` (JS/TS, weekly too) and `dependabot.yml` complete the set.
+  `>=22.16.0` (the first Node 22 whose `node:sqlite` has `isTransaction`, which `Db.transaction`
+  relies on). `codeql.yml` (JS/TS, weekly too) and `dependabot.yml` complete the set.
 
 ## 12. Engineering conventions
 

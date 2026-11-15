@@ -198,6 +198,53 @@ test('quick add: a picker popover opens downward without a flip; the hint bar st
   expect(Math.abs(after.hintsBottom - after.innerHeight)).toBeLessThanOrEqual(1)
 })
 
+test('quick add opens on the display under the cursor, also after a focus-returning hide', async () => {
+  shell = await launchShell()
+  const { app } = shell
+  await openQuickAdd(app)
+  await expect.poll(() => windowVisible(app, 'quick-add')).toBe(true)
+  const workArea = await app.evaluate(({ BrowserWindow, screen }) => {
+    const win = BrowserWindow.getAllWindows().find((w) =>
+      w.webContents.getURL().split(/[?#]/)[0]?.endsWith('/quick-add.html'),
+    )
+    if (!win) throw new Error('quick add window not found')
+    // The state hideWindowReturningFocus leaves on Windows when the popup had focus. Bounds
+    // set on a minimized window used to be undone by the restore before showing, so the popup
+    // came back on the previous monitor.
+    win.setOpacity(0)
+    if (process.platform === 'win32') win.minimize()
+    win.hide()
+    win.setOpacity(1)
+    // The cursor is now on "another display" (runners have one; this one is offset).
+    const real = screen.getPrimaryDisplay()
+    const wa = real.workArea
+    const other = {
+      ...real,
+      workArea: { ...wa, x: wa.x + 150, y: wa.y + 40, width: wa.width - 150 },
+    }
+    screen.getDisplayNearestPoint = () => other
+    return other.workArea
+  })
+  // Asked again while it is not showing: on macOS a show within milliseconds of the hide (no
+  // user is that fast) can lose focus again to the hide's own focus change, and the popup
+  // hides on blur.
+  await expect
+    .poll(async () => {
+      if (!(await windowVisible(app, 'quick-add'))) await hook(app, 'triggerShortcut', 'quickAdd')
+      return windowVisible(app, 'quick-add')
+    })
+    .toBe(true)
+  const bounds = await app.evaluate(({ BrowserWindow }) => {
+    const win = BrowserWindow.getAllWindows().find((w) =>
+      w.webContents.getURL().split(/[?#]/)[0]?.endsWith('/quick-add.html'),
+    )
+    return win?.getBounds()
+  })
+  // quickAddPosition: centred on the work area, top edge at 20 % of its height.
+  expect(bounds?.x).toBe(Math.round(workArea.x + (workArea.width - (bounds?.width ?? 0)) / 2))
+  expect(bounds?.y).toBe(Math.round(workArea.y + workArea.height * 0.2))
+})
+
 test('in-app new-task dialog (Cmd/Ctrl+N) creates a task, and "create more" keeps it open', async () => {
   shell = await launchShell()
   const { page } = shell

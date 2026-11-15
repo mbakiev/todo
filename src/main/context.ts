@@ -19,6 +19,6 @@ export interface AppContext {
   broadcastShortcutStatus(status: ShortcutStatus): void
   /** Windows `query-session-end`: logoff / shutdown is coming; save now (see quitGate.ts). */
   sessionEnding(): void
-  /** Windows `session-end`: the process is about to be killed; close the DB now. */
+  /** Windows `session-end`: the process is about to be killed; close the DB (after the flush). */
   sessionEnded(): void
 }

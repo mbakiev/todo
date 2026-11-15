@@ -1,7 +1,9 @@
 // Opens the database at startup and, when that fails (or the file is missing while backups
 // exist), asks the user what to do instead of leaving an invisible process behind.
 // Decisions and file operations: services/startupRecovery.ts (unit-tested).
+import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { dialog, shell } from 'electron'
 import { openDatabase, type Repos } from './db'
 import { isTestRun, type AppPaths } from './paths'
@@ -43,6 +45,36 @@ async function ask(spec: StartupDialogSpec): Promise<StartupChoice> {
   return spec.buttons[response]?.id ?? 'quit'
 }
 
+/**
+ * Shows a folder in the file manager. After Reveal (except for a locked file) the app quits
+ * right away. On Windows `shell.openPath` called after a message box returns before Explorer
+ * has the request, and quitting then drops it: no window opens. A separate explorer.exe process
+ * does not depend on us staying alive. If Explorer cannot be started, `shell.openPath` is
+ * still tried (it does work while the app stays up, as it does for a locked file).
+ */
+async function revealFolder(target: string): Promise<void> {
+  if (process.platform !== 'win32') {
+    await shell.openPath(target)
+    return
+  }
+  const explorer = join(process.env.SystemRoot ?? 'C:\\Windows', 'explorer.exe')
+  const started = await new Promise<boolean>((resolve) => {
+    const failed = (err: unknown): void => {
+      console.error('Could not start Explorer for the data folder', err)
+      resolve(false)
+    }
+    try {
+      const child = spawn(explorer, [target], { detached: true, stdio: 'ignore' })
+      child.once('spawn', () => resolve(true))
+      child.once('error', failed)
+      child.unref()
+    } catch (err) {
+      failed(err)
+    }
+  })
+  if (!started) await shell.openPath(target)
+}
+
 function restoreFailed(err: unknown): void {
   const message = err instanceof Error ? err.message : String(err)
   if (isTestRun) console.error(`[startup-dialog] restore failed: ${message}`)
@@ -62,7 +94,7 @@ export async function openDatabaseWithRecovery(paths: AppPaths): Promise<Repos |
     ask,
     reveal: async () => {
       const target = existsSync(paths.dataDir) ? paths.dataDir : paths.userData
-      if (!isTestRun) await shell.openPath(target)
+      if (!isTestRun) await revealFolder(target)
     },
     restoreFailed,
     exists: existsSync,
