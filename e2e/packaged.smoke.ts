@@ -3,8 +3,9 @@
 //
 // Like the e2e harness it uses a temp userData dir (MARTIN_TODOS_USER_DATA) and test mode
 // (MARTIN_TODOS_E2E=1), so it never touches real data, real global shortcuts or login items.
-// The executable is MARTIN_TODOS_PACKAGED_EXE, or else this platform's unpacked app under
-// release/<version>/.
+// The executable is MARTIN_TODOS_PACKAGED_EXE, or else the unpacked app under release/<version>/
+// for this platform and for the arch of the Node running the test (an x64 Node under
+// emulation on an Arm machine picks the x64 build).
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -23,7 +24,10 @@ function packagedExecutable(): string {
     const dir = process.arch === 'arm64' ? 'mac-arm64' : 'mac'
     return join(release, dir, 'Martins To Dos.app', 'Contents', 'MacOS', 'Martins To Dos')
   }
-  if (process.platform === 'win32') return join(release, 'win-unpacked', 'Martins To Dos.exe')
+  if (process.platform === 'win32') {
+    const dir = process.arch === 'arm64' ? 'win-arm64-unpacked' : 'win-unpacked'
+    return join(release, dir, 'Martins To Dos.exe')
+  }
   return join(release, 'linux-unpacked', 'martin-todos')
 }
 

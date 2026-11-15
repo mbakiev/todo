@@ -549,16 +549,18 @@ no theme gallery.
   `productName` **"Martins To Dos"** (no apostrophe, to avoid quoting problems in
   Windows paths and installer tooling). This is also `productName` in `package.json`,
   so userData is `<appData>/Martins To Dos` (dev: `Martins To Dos-dev`).
-- electron-builder targets: macOS `dmg` (arm64 + x64), Windows `nsis` (x64). Unsigned
-  for now. No auto-update.
+- electron-builder targets: macOS `dmg` (arm64 + x64), Windows `nsis` (x64 + arm64, one
+  installer per arch: `buildUniversalInstaller: false`). Unsigned for now. No auto-update.
 
 ### CI and releases
 - GitHub Actions, first-party actions only. `ci.yml` (push to `main`, PRs, manual): typecheck
   / lint / format on Linux; unit tests on Linux, macOS, Windows; e2e on macOS and Windows (no
   Linux — not a target); and the reusable `package.yml`, which builds the installers with
-  `--publish never`, runs `npm run test:packaged` (`e2e/packaged.smoke.ts`: the packaged app
-  in test mode with a temp userData dir — test mode is env-gated only, so it works in
-  packaged builds) and uploads them as artifacts (7 days). On Windows it also installs the
+  `--publish never` (macOS on `macos-latest`; Windows x64 on `windows-latest` and arm64 on
+  `windows-11-arm`, each arch on its own hardware), runs `npm run test:packaged`
+  (`e2e/packaged.smoke.ts`: the packaged app in test mode with a temp userData dir — test
+  mode is env-gated only, so it works in packaged builds) and uploads them as artifacts (7
+  days). On Windows it also installs the
   NSIS installer silently, smoke-tests the installed exe and uninstalls it.
 - `release.yml` (tag `v*.*.*`): tag must equal `v` + `package.json` version; runs `ci.yml`,
   then `gh release create` with the artifacts from that same run plus `SHA256SUMS.txt`. The

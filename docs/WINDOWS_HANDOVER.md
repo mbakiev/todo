@@ -2,7 +2,8 @@
 
 The app was developed on macOS. Since the GitHub Actions CI (README "CI and releases") it is
 also built and tested on a `windows-latest` runner (Windows Server, x64) on every push and
-PR — see "What CI proves on Windows" below. The rest needs a real desktop session. Most of
+PR, and the arm64 installer is built and smoke-tested on a `windows-11-arm` runner — see
+"What CI proves on Windows" below. The rest needs a real desktop session. Most of
 it was run on a Windows 11 desktop on 2026-11-14 (see "Windows 11 desktop pass" below;
 ticked items passed there, notes say what was and wasn't covered); unticked items still need
 a person. Work top to bottom; items are in priority order. File references are to
@@ -20,11 +21,16 @@ Checked on every run (`.github/workflows/ci.yml`, `package.yml`):
   hook), settings, export/import, crash recovery, quit gate, startup dialogs (stubbed),
   clipboard (CRLF line endings), window sizing. One test is skipped on Windows: "SIGTERM saves
   pending edits" — Windows has no catchable SIGTERM.
-- `npm run dist:win` builds `MartinsToDos-<version>-win-x64-setup.exe` (unsigned) without
-  errors.
-- The packaged app (`release/<version>/win-unpacked`) starts as a packaged build with the right
-  version, renders the board and creates a task (`npm run test:packaged`).
-- The NSIS installer installs **silently** (`/S`) per-user to
+- `npm run dist:win:x64` (on the x64 runner) and `npm run dist:win:arm64` (on the
+  `windows-11-arm` runner) build `MartinsToDos-<version>-win-x64-setup.exe` and
+  `MartinsToDos-<version>-win-arm64-setup.exe` (unsigned) without errors. `npm run dist:win`
+  builds both in one run.
+- On each runner, the packaged app (`release/<version>/win-unpacked`, or
+  `win-arm64-unpacked` on Arm) starts as a packaged build with the right version, renders the
+  board and creates a task (`npm run test:packaged`). The unit and e2e suites run on x64
+  only; the app has no native modules, so the arm64 build differs only in the Electron
+  binary.
+- The NSIS installer (each arch, on its own runner) installs **silently** (`/S`) per-user to
   `%LOCALAPPDATA%\Programs\Martins To Dos\` without UAC, the installed exe passes the same
   smoke test, and the silent uninstaller removes it.
 
@@ -48,7 +54,8 @@ Not covered by CI (still manual, below):
 
 ## Windows 11 desktop pass (2026-11-14)
 
-Windows 11 Enterprise 24H2 (10.0.26100), x64, two 5120×2880 monitors at 200 %, en-US
+Windows 11 Enterprise 24H2 (10.0.26100) on Arm64 (Snapdragon X Elite), running the **x64**
+build under emulation (the arm64 build did not exist yet), two 5120×2880 monitors at 200 %, en-US
 keyboard only, behind a TLS-inspecting proxy; Node 24.22.3. The installed app (silent `/S`
 install of the locally built setup exe) was driven with real mouse/keyboard input and UI
 Automation against a throwaway profile (`MARTIN_TODOS_USER_DATA`), not in test mode.
@@ -79,7 +86,7 @@ layouts (3.11, likely a product decision); the tray icon on a light taskbar and 
 
 ## 0. Prerequisites
 
-- [x] Windows 10 22H2 or Windows 11, x64.
+- [x] Windows 10 22H2 or Windows 11, x64 (or Windows 11 on Arm64: use the arm64 installer).
 - [x] Node **24.15+** (`node -v`) and npm (bundled); CI uses 24 (`.nvmrc`), the Node bundled
       in Electron 45. No Python / Visual Studio build tools needed: the app has no native
       modules (SQLite is Node's built-in `node:sqlite`).
@@ -100,7 +107,7 @@ npm ci
 npm run typecheck; npm run lint; npm test   # should all pass as on macOS
 npm run test:e2e                            # Playwright _electron suite (temp userData + MARTIN_TODOS_E2E=1)
 npm run seed                                # dev app with demo data (<%APPDATA%>\Martins To Dos-dev)
-npm run dist:win                            # → release\0.1.0\MartinsToDos-0.1.0-win-x64-setup.exe
+npm run dist:win                            # → release\0.1.0\MartinsToDos-0.1.0-win-{x64,arm64}-setup.exe
 ```
 
 - [x] All npm scripts are plain commands chained with `&&` (no `VAR=x` prefixes, no `rm`,

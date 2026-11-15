@@ -17,7 +17,8 @@ Get the latest version from the
 |---|---|
 | Mac with Apple silicon (M1 or later) | `MartinsToDos-<version>-mac-arm64.dmg` |
 | Mac with an Intel processor | `MartinsToDos-<version>-mac-x64.dmg` |
-| Windows 10 / 11 (64-bit) | `MartinsToDos-<version>-win-x64-setup.exe` |
+| Windows 10 / 11 with an Intel or AMD processor | `MartinsToDos-<version>-win-x64-setup.exe` |
+| Windows 11 with an Arm processor (e.g. Snapdragon) | `MartinsToDos-<version>-win-arm64-setup.exe` |
 
 The installers are unsigned, so macOS and Windows ask before running them; each release's
 notes explain the one-time step.
@@ -98,9 +99,10 @@ npm run test:e2e     # builds, then Playwright (_electron) tests
 ## Building installers
 
 ```sh
-npm run pack         # unpacked app for this machine → release/<version>/mac-arm64/ (or win-unpacked/)
+npm run pack         # unpacked app for this machine → release/<version>/mac-arm64/ (or win-unpacked/, win-arm64-unpacked/)
 npm run dist:mac     # macOS: .dmg + .zip for arm64 and x64 → release/<version>/
-npm run dist:win     # Windows (run on Windows): NSIS installer x64 → release/<version>/
+npm run dist:win     # Windows (run on Windows): NSIS installers x64 + arm64 → release/<version>/
+                     #   (one arch only: dist:win:x64 / dist:win:arm64)
 npm run icons        # regenerate icons from build/icon-src/*.svg
 ```
 
@@ -109,8 +111,8 @@ Applications, launch it. A build made on your own Mac just opens; a copy downloa
 AirDropped from elsewhere is quarantined, so run
 `xattr -dr com.apple.quarantine "/Applications/Martins To Dos.app"` once (or System
 Settings → Privacy & Security → Open Anyway). **Windows:** run
-`MartinsToDos-<version>-win-x64-setup.exe` (per-user, no admin); SmartScreen →
-"More info" → "Run anyway". Windows checklist: [`docs/WINDOWS_HANDOVER.md`](docs/WINDOWS_HANDOVER.md).
+`MartinsToDos-<version>-win-x64-setup.exe` (or `-win-arm64-setup.exe` on an Arm PC; per-user,
+no admin); SmartScreen → "More info" → "Run anyway". Windows checklist: [`docs/WINDOWS_HANDOVER.md`](docs/WINDOWS_HANDOVER.md).
 
 ## CI and releases
 
@@ -122,7 +124,7 @@ demand (Actions → CI → Run workflow):
 | Typecheck, lint, format | Linux | `npm run typecheck`, `lint`, `format:check` |
 | Unit tests | Linux, macOS, Windows | `npm test` (Vitest, `TZ=America/New_York`) |
 | E2E | macOS, Windows | `npm run test:e2e` (Playwright `_electron`); traces uploaded on failure |
-| Package | macOS, Windows | `dist:mac` / `dist:win` with `--publish never`, then `npm run test:packaged` against the packaged app (Windows also silently installs, smoke-tests and uninstalls the NSIS installer) |
+| Package | macOS, Windows x64, Windows Arm64 | `dist:mac` / `dist:win:x64` / `dist:win:arm64` with `--publish never`, then `npm run test:packaged` against the packaged app (Windows also silently installs, smoke-tests and uninstalls the NSIS installer) |
 
 CodeQL scans the code on pushes, PRs and weekly; Dependabot proposes GitHub Actions updates
 weekly and npm updates monthly (minor + patch grouped in one PR).
@@ -130,7 +132,8 @@ weekly and npm updates monthly (minor + patch grouped in one PR).
 **Downloading a build:** released versions are on the
 [Releases page](https://github.com/mbakiev/todo/releases). For an unreleased build, open a CI
 run (Actions tab, or the checks on a PR) → *Artifacts* → `installers-macos` (arm64 + x64
-`.dmg` / `.zip`) or `installers-windows` (`-setup.exe`). Artifacts are kept for 7 days.
+`.dmg` / `.zip`), `installers-windows-x64` or `installers-windows-arm64` (`-setup.exe`).
+Artifacts are kept for 7 days.
 
 **Cutting a release:**
 
@@ -138,7 +141,7 @@ run (Actions tab, or the checks on a PR) → *Artifacts* → `installers-macos` 
 2. `git tag v0.2.0 && git push origin v0.2.0`.
 3. `release.yml` checks that the tag equals `v` + the `package.json` version, runs the whole
    CI workflow, then publishes a GitHub Release with the macOS DMGs/ZIPs, the Windows
-   installer and `SHA256SUMS.txt` attached. The notes are `.github/release-notes.md`
+   x64 and arm64 installers and `SHA256SUMS.txt` attached. The notes are `.github/release-notes.md`
    (download table, first-launch steps) followed by GitHub's auto-generated change list. A
    tag with a suffix (`v0.2.0-beta.1`) becomes a pre-release.
 
