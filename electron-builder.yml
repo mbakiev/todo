@@ -77,8 +77,10 @@ nsis:
   deleteAppDataOnUninstall: false
   installerIcon: build/icon.ico
   uninstallerIcon: build/icon.ico
-  # A separate installer per arch (…-win-x64-setup.exe, …-win-arm64-setup.exe) instead of
-  # one combined installer that carries both apps and has no arch in its name.
+  # A separate installer per arch (…-win-x64-setup.exe, …-win-arm64-setup.exe) and nothing
+  # else. Without this, electron-builder builds those two plus a third, combined installer
+  # that carries both apps and has no arch in its name. The arm64 installer refuses to run on
+  # an Intel/AMD PC (customInit in build/installer.nsh).
   buildUniversalInstaller: false
   artifactName: MartinsToDos-${version}-win-${arch}-setup.${ext}
 

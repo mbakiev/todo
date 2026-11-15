@@ -59,8 +59,10 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $setup = Get-ChildItem release/*/*-setup.exe | Select-Object -First 1
-          Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait
+          # Exactly one installer, so the one tested here is the one uploaded below.
+          $setup = @(Get-ChildItem release/*/*-setup.exe)
+          if ($setup.Count -ne 1) { throw "expected one installer, found $($setup.Count): $($setup.Name -join ', ')" }
+          Start-Process -FilePath $setup[0].FullName -ArgumentList '/S' -Wait
           $dir = Join-Path $env:LOCALAPPDATA 'Programs\Martins To Dos'
           $exe = Join-Path $dir 'Martins To Dos.exe'
           if (-not (Test-Path $exe)) { throw "installed app not found: $exe" }

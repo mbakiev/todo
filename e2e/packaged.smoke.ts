@@ -48,13 +48,20 @@ test('packaged app starts, renders the board and creates a task', async () => {
     env: { ...process.env, MARTIN_TODOS_USER_DATA: userData, MARTIN_TODOS_E2E: '1' },
   })
 
-  // It really is the packaged build, with the right version, using the temp data folder.
+  // It really is the packaged build, with the right version, using the temp data folder —
+  // and a native build for this Node's arch, not (on an Arm runner) an x64 app under emulation.
   const info = await app.evaluate(({ app: a }) => ({
     isPackaged: a.isPackaged,
     version: a.getVersion(),
     userData: a.getPath('userData'),
+    arch: process.arch,
   }))
-  expect(info).toEqual({ isPackaged: true, version: pkg.version, userData })
+  expect(info).toEqual({
+    isPackaged: true,
+    version: pkg.version,
+    userData,
+    arch: process.arch,
+  })
 
   const page = await windowByEntry(app, 'index')
   await page.waitForSelector('[data-slot="view"]')

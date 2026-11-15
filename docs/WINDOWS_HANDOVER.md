@@ -82,11 +82,14 @@ Still needs a person: SmartScreen on a downloaded installer and the assisted ins
 (2); taskbar pin (2); a real sign-out / shutdown / restart (3.4, 3.6); mixed DPI (3.2); AltGr
 layouts (3.11, likely a product decision); the tray icon on a light taskbar and at
 100–150 % (3.3); recording a Win combo (3.7); export / import dialogs and backup rotation
-(3.8); dark mode (3.2, 3.10).
+(3.8); dark mode (3.2, 3.10). Also the whole pass on the native arm64 build (so far only CI's
+smoke and install tests have run it) and on real x64 hardware (this pass ran x64 under
+emulation).
 
 ## 0. Prerequisites
 
-- [x] Windows 10 22H2 or Windows 11, x64 (or Windows 11 on Arm64: use the arm64 installer).
+- [x] Windows 10 22H2 or Windows 11, x64 (the x64 build also runs under emulation on Arm64).
+- [ ] Windows 11 on Arm64 with the arm64 installer: not yet run on a desktop.
 - [x] Node **24.15+** (`node -v`) and npm (bundled); CI uses 24 (`.nvmrc`), the Node bundled
       in Electron 45. No Python / Visual Studio build tools needed: the app has no native
       modules (SQLite is Node's built-in `node:sqlite`).
