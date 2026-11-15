@@ -143,19 +143,33 @@ test('Windows sign-out saves pending edits and does not hold up the sign-out', a
   shell = await launchShell({ userData, seed: true })
   await openTask(shell.page, TASK)
   const hwnd = await mainWindowHandle(shell.app)
-  const sender = await startSessionEndSender() // PowerShell starts slower than the debounce
-  await typeTitle(shell.page, ' logoff')
-  // Still inside the debounce: only the session-end flush can save it.
-  expect((await dbTasks(shell.page)).some((t) => t.title.includes('logoff'))).toBe(false)
+  const sender = await startSessionEndSender()
   const s = shell
-  shell = undefined
-  // Back to back, the tightest Windows can do (it sends WM_ENDSESSION once every app answered).
-  const answer = await sender.fire(hwnd, 0)
-  expect(answer.query, 'answered WM_QUERYENDSESSION with "go ahead"').toBe(1)
-  expect(answer.end, 'handled WM_ENDSESSION without hanging').not.toBeNull()
-  // Windows now ends the process without further notice.
-  s.app.process().kill()
-  await waitForExit(s)
+  shell = undefined // after session-end the app is killed, not closed: see `finally`
+  const saved = async (): Promise<boolean> =>
+    (await dbTasks(s.page)).some((t) => t.title.includes('logoff'))
+  try {
+    // Stop the renderer's timers, so the autosave debounce cannot fire however long the steps
+    // below take: only the session-end flush can save the edit.
+    await s.page.clock.install()
+    await s.page.clock.pauseAt(Date.now() + 1000)
+    await typeTitle(s.page, ' logoff')
+    expect(await saved()).toBe(false)
+    // Back to back, the tightest Windows can do (it sends WM_ENDSESSION once every app
+    // answered).
+    const answer = await sender.fire(hwnd, 0)
+    expect(answer.query, 'answered WM_QUERYENDSESSION with "go ahead"').toBe(1)
+    expect(answer.end, 'handled WM_ENDSESSION without hanging').not.toBeNull()
+    // The flush that WM_QUERYENDSESSION started may still be on its way. Windows kills the
+    // process some time after WM_ENDSESSION, here once the edit is in the DB — or the DB is
+    // closed already (`tasks.list` fails), which the app does only after that flush.
+    await expect.poll(() => saved().catch(() => true)).toBe(true)
+  } finally {
+    sender.kill()
+    // Windows ends the process without further notice.
+    s.app.process().kill()
+    await waitForExit(s)
+  }
   shell = await launchShell({ userData })
   expect((await dbTasks(shell.page)).some((t) => t.title.includes('logoff'))).toBe(true)
 })

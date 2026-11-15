@@ -54,15 +54,18 @@ const SQLITE_CANTOPEN = 14
  * Windows: a program that opened the data file without sharing it (a backup or sync tool,
  * antivirus, an editor) makes SQLite fail with a generic SQLITE_CANTOPEN ("unable to open
  * database file"), which on its own reads as damaged. Opening the file ourselves tells the
- * two apart: the sharing violation surfaces as EBUSY. Returns that EBUSY error (so it is
- * classified as 'locked'), otherwise `err` unchanged.
+ * two apart: the sharing violation surfaces as EBUSY. The same goes for its -wal / -shm files,
+ * which SQLite opens along with it. Returns that EBUSY error (so it is classified as
+ * 'locked'), otherwise `err` unchanged.
  */
 export function explainOpenError(err: unknown, dbFile: string): unknown {
   if ((err as { errcode?: unknown } | null)?.errcode !== SQLITE_CANTOPEN) return err
-  try {
-    closeSync(openSync(dbFile, 'r+'))
-  } catch (probe) {
-    if ((probe as NodeJS.ErrnoException | null)?.code === 'EBUSY') return probe
+  for (const suffix of ['', '-wal', '-shm']) {
+    try {
+      closeSync(openSync(`${dbFile}${suffix}`, 'r+'))
+    } catch (probe) {
+      if ((probe as NodeJS.ErrnoException | null)?.code === 'EBUSY') return probe
+    }
   }
   return err
 }

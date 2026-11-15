@@ -49,6 +49,8 @@ export interface SessionEndResult {
 export interface SessionEndSender {
   /** Sends WM_QUERYENDSESSION, waits `gapMs`, then WM_ENDSESSION, to the given window. */
   fire(hwnd: bigint, gapMs?: number): Promise<SessionEndResult>
+  /** Stops the sender if it is still running (a test that failed before or during `fire`). */
+  kill(): void
 }
 
 /** Starts the sender and resolves once it is ready to fire. */
@@ -67,10 +69,12 @@ export async function startSessionEndSender(): Promise<SessionEndSender> {
   const lines = createInterface({ input: ps.stdout })
   const next = (): Promise<string> =>
     new Promise((resolve, reject) => {
-      const onExit = (): void => reject(new Error(`session-end sender exited: ${stderr}`))
-      ps.once('exit', onExit)
+      // 'close', not 'exit': 'exit' can come before the last stdout line was read, and the
+      // script exits right after printing its result.
+      const onClose = (): void => reject(new Error(`session-end sender exited: ${stderr}`))
+      ps.once('close', onClose)
       lines.once('line', (l) => {
-        ps.off('exit', onExit)
+        ps.off('close', onClose)
         resolve(l.trim())
       })
     })
@@ -80,6 +84,9 @@ export async function startSessionEndSender(): Promise<SessionEndSender> {
       const result = next()
       ps.stdin.end(`${hwnd} ${gapMs}\n`)
       return JSON.parse(await result) as SessionEndResult
+    },
+    kill() {
+      if (ps.exitCode === null) ps.kill()
     },
   }
 }

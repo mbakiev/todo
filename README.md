@@ -83,7 +83,7 @@ restore the newest backup (the unreadable file is kept as `todos.db.broken-<time
 
 Requires Node 22.16+ and npm (macOS or Windows; no native build tools needed). CI uses Node 24
 (`.nvmrc`), the version bundled in Electron 45. Older Node 22 releases lack `node:sqlite`'s
-`isTransaction` / `isOpen`, so the unit tests' transaction rollbacks fail there.
+`isTransaction`, so the unit tests' transaction rollbacks fail there.
 
 ```sh
 npm ci

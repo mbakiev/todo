@@ -485,9 +485,10 @@ unit-tested `services/startupRecovery.ts`). The process never lingers without a 
   Quit (and Reveal, except for "locked") quits; so does a backup copy that fails after the
   file was moved aside. The loop: `openDatabaseWithRecoveryFlow` (`services/startupRecovery.ts`).
   Windows: a file another program holds open without sharing makes SQLite fail with a generic
-  "unable to open database file", so a plain open of the file (EBUSY = sharing violation)
-  decides between locked and damaged (`explainOpenError`). Reveal there starts `explorer.exe
-  <folder>` as its own process: `shell.openPath` followed by the immediate quit opens nothing.
+  "unable to open database file", so a plain open of the file and its -wal / -shm (EBUSY =
+  sharing violation) decides between locked and damaged (`explainOpenError`). Reveal there
+  starts `explorer.exe <folder>` as its own process: `shell.openPath` followed by the
+  immediate quit opens nothing.
 - **DB file missing but backups exist** → **Restore latest backup** / **Start fresh** /
   **Quit**, instead of silently creating an empty database.
 - Any other startup exception shows an error box and exits.
@@ -503,7 +504,8 @@ unit-tested `services/startupRecovery.ts`). The process never lingers without a 
   (`main/quitGate.ts`): the quit is held until the main window's renderer has saved pending
   edits (≤ 1.5 s), repeated quit requests during that wait are held too, and the DB is closed
   exactly once afterwards. Windows logoff / shutdown (no `before-quit`) starts the flush on
-  `query-session-end` and closes the DB on `session-end`.
+  `query-session-end` and closes the DB on `session-end` (once that flush has settled, if it
+  is still running).
 
 ### Environment variables
 | Variable | Effect |

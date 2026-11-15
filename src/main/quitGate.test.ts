@@ -64,6 +64,28 @@ describe('quit gate', () => {
     expect(deps.finalize).toHaveBeenCalledTimes(1)
   })
 
+  it('Windows session end: session-end during the flush finalizes only once it settled', async () => {
+    const { gate, deps, flush } = setup()
+    gate.sessionEnding()
+    gate.sessionEnded() // WM_ENDSESSION right behind WM_QUERYENDSESSION
+    expect(deps.finalize).not.toHaveBeenCalled() // the DB stays open for the renderer's writes
+    flush.resolve()
+    await flush.promise
+    await Promise.resolve()
+    expect(deps.finalize).toHaveBeenCalledTimes(1)
+    expect(gate.state).toBe('finalized')
+    expect(deps.quit).not.toHaveBeenCalled()
+    gate.sessionEnded()
+    expect(deps.finalize).toHaveBeenCalledTimes(1)
+  })
+
+  it('Windows session end: session-end with nothing left to flush finalizes at once', () => {
+    const { gate, deps } = setup()
+    gate.sessionEnded()
+    expect(deps.flush).not.toHaveBeenCalled()
+    expect(deps.finalize).toHaveBeenCalledTimes(1)
+  })
+
   it('a quit after the session flush started waits for the same flush', async () => {
     const { gate, deps, flush } = setup()
     gate.sessionEnding()

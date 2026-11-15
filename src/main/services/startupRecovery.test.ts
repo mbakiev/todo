@@ -136,6 +136,19 @@ describe('explainOpenError', () => {
       }
     },
   )
+
+  it.skipIf(process.platform !== 'win32')('a held -wal file (Windows) is "locked" as well', () => {
+    const file = join(dir, 'todos.db')
+    writeFileSync(file, '')
+    writeFileSync(`${file}-wal`, '')
+    const cantOpen = Object.assign(new Error('unable to open database file'), { errcode: 14 })
+    const fd = holdExclusively(`${file}-wal`)
+    try {
+      expect(classifyOpenError(explainOpenError(cantOpen, file))).toBe('locked')
+    } finally {
+      closeSync(fd)
+    }
+  })
 })
 
 describe('startupDialogSpec', () => {

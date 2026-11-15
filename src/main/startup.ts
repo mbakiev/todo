@@ -49,7 +49,8 @@ async function ask(spec: StartupDialogSpec): Promise<StartupChoice> {
  * Shows a folder in the file manager. After Reveal (except for a locked file) the app quits
  * right away. On Windows `shell.openPath` called after a message box returns before Explorer
  * has the request, and quitting then drops it: no window opens. A separate explorer.exe process
- * does not depend on us staying alive.
+ * does not depend on us staying alive. If Explorer cannot be started, `shell.openPath` is
+ * still tried (it does work while the app stays up, as it does for a locked file).
  */
 async function revealFolder(target: string): Promise<void> {
   if (process.platform !== 'win32') {
@@ -57,9 +58,21 @@ async function revealFolder(target: string): Promise<void> {
     return
   }
   const explorer = join(process.env.SystemRoot ?? 'C:\\Windows', 'explorer.exe')
-  const child = spawn(explorer, [target], { detached: true, stdio: 'ignore' })
-  child.on('error', (err) => console.error('Could not open the data folder', err))
-  child.unref()
+  const started = await new Promise<boolean>((resolve) => {
+    const failed = (err: unknown): void => {
+      console.error('Could not start Explorer for the data folder', err)
+      resolve(false)
+    }
+    try {
+      const child = spawn(explorer, [target], { detached: true, stdio: 'ignore' })
+      child.once('spawn', () => resolve(true))
+      child.once('error', failed)
+      child.unref()
+    } catch (err) {
+      failed(err)
+    }
+  })
+  if (!started) await shell.openPath(target)
 }
 
 function restoreFailed(err: unknown): void {

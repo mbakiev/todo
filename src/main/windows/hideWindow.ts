@@ -36,6 +36,10 @@ export function prepareToShow(win: BrowserWindow, place?: () => void): void {
     win.setOpacity(0)
     win.restore()
   }
-  place?.()
-  if (restoring) win.setOpacity(1)
+  try {
+    place?.()
+  } finally {
+    // Also when `place` throws: never leave a restored window on screen fully transparent.
+    if (restoring && !win.isDestroyed()) win.setOpacity(1)
+  }
 }
