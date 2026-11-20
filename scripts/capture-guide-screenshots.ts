@@ -416,13 +416,13 @@ async function prepareUserData(): Promise<string> {
   const stored = await page.evaluate(() => (globalThis as unknown as { api: Api }).api.tasks.list())
   await shell.close({ keepUserData: true })
 
-  // Back-date created/completed times (the API stamps "now"), straight in the closed DB.
+  // Back-date created/started/completed times (the API stamps "now"), straight in the closed DB.
   const now = Date.now()
   // Loaded at runtime: Playwright's TS loader cannot import `node:sqlite` statically.
   const { DatabaseSync } = process.getBuiltinModule('node:sqlite') as typeof Sqlite
   const db = new DatabaseSync(join(userData, 'data', 'todos.db'))
   const update = db.prepare(
-    'UPDATE tasks SET created_at = ?, updated_at = ?, completed_at = ? WHERE id = ?',
+    'UPDATE tasks SET created_at = ?, updated_at = ?, started_at = ?, completed_at = ? WHERE id = ?',
   )
   const byTitle = new Map<string, Task>(stored.map((t) => [t.title, t]))
   tasks.forEach((t, i) => {
@@ -442,7 +442,20 @@ async function prepareUserData(): Promise<string> {
       startOfLocalDayMs(addDays(today, -t.createdDaysAgo)) + (9 + (i % 8)) * 3_600_000,
     )
     const created = Math.min(createdAt, completedAt ?? createdAt)
-    update.run(created, Math.max(created, completedAt ?? created), completedAt, row.id)
+    // The record: started work began on its start date (or the day it was created); finished
+    // work took a few hours, every third task a day or two. Never before it was created.
+    const status = t.status ?? 'not_started'
+    let startedAt: number | null = null
+    if (status === 'done') {
+      const took = i % 3 === 0 ? (1 + (i % 2)) * 86_400_000 : (1 + (i % 5)) * 1_800_000
+      startedAt = Math.max(created, (completedAt ?? created) - took)
+    } else if (status !== 'not_started') {
+      const from = t.start ?? addDays(today, -t.createdDaysAgo)
+      const at = startOfLocalDayMs(from) + (10 + (i % 6)) * 3_600_000
+      startedAt = Math.max(created, Math.min(now - 60_000, at))
+    }
+    const updated = Math.max(created, completedAt ?? startedAt ?? created)
+    update.run(created, updated, startedAt, completedAt, row.id)
   })
   db.close()
   return userData

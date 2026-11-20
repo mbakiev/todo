@@ -125,6 +125,10 @@ the next click on an empty day starts a new task as usual.
   it).
 - **Start vs due**: the due date is the deadline; the start date is when the task should
   appear on Today and This Week. Start can't be after due.
+- **Started and completed**: the app notes the moment a task leaves Not Started and the moment
+  it reaches Done; you don't enter these. The footer shows **Started**; hover it for every
+  timestamp and, for a finished task, how long it took. Moving a task back to Not Started
+  clears its start.
 - **Description**: use the toolbar or type Markdown: `# ` heading, `- ` bullets, `1. `
   numbers, `[ ] ` checklist, `> ` quote, ```` ``` ```` code block, `**bold**`. The table button
   inserts a table; its menu adds or removes rows and columns. Pasted Markdown becomes
@@ -171,21 +175,34 @@ row. `↑`/`↓` move through rows, `Enter` opens one.
 
 ![List view grouped by status, with columns for status, title, priority, tags, start, due, created and completed](screenshots/list-grouped.png)
 
-**Timeline** shows dated open tasks as bars from start to due (one date = one day), coloured
-by priority. Pick **Day**, **Week** or **Month** zoom; **Today** scrolls back. Drag a bar to
-move it, or an end to change the start or due date. A long bar's title stays in view when you
-scroll past its start. The chart starts a week before today:
-older tasks are pinned to the left edge with their real date ("due Nov 1"), and overdue
-titles are red. **Completed** shows finished tasks too.
+**Timeline** shows tasks as bars, coloured by priority:
 
-![Timeline at Week zoom: an overdue task pinned at the left edge, multi-day bars and one-day bars](screenshots/timeline-week.png)
+- **Not started**: from the start date to the due date (one date = one day). Tasks with no
+  dates are not shown.
+- **In Progress or Blocked**: from the day you started it up to today, with or without dates.
+  If the due date is still ahead, the bar carries on to it, lighter and dashed. Blocked bars
+  are hatched.
+- **Done** (turn on **Completed**): from the day it was started to the day it was finished.
 
-**Calendar** shows a month. Tasks with a start and due date are bars; tasks with one date
-are a single entry on that day; **+N more** lists the rest of a full day. Drag a task to another day
-to move it (multi-day tasks keep their length). Click an empty part of a day to add a task
-due then. Finished tasks are struck through; **Completed** hides them.
+Hover a bar to see when it started and how long it has been going, or how long it took. Pick
+**Day**, **Week** or **Month** zoom; **Today** scrolls back. Drag a not-started bar to move
+it, or an end to change its start or due date. On a started bar only the right end drags, and
+it sets the due date; finished bars don't move. A long bar's title stays in view when you
+scroll past its start. The chart starts a week before today, or earlier if work in progress
+began before that (up to a year back): older tasks are pinned to the left edge with their
+real date ("due Nov 1"), and overdue titles are red.
 
-![Calendar month with multi-day bars, single-day items and "+N more" on busy days](screenshots/calendar-month.png)
+![Timeline at Week zoom: an overdue task pinned at the left edge, hatched Blocked bars and In Progress bars running from their start to today, and planned bars after today](screenshots/timeline-week.png)
+
+**Calendar** shows a month. Not-started tasks with a start and due date are bars; with one
+date they are a single entry on that day. Tasks In Progress or Blocked run from the day you
+started them to today (or to the due date, if that is later), with or without dates; Blocked
+ones are hatched and carry the Blocked icon. Finished tasks sit on the days they actually ran,
+struck through; **Completed** hides them. **+N more** lists the rest of a full day. Drag a
+not-started task to another day to move it (multi-day tasks keep their length); started and
+finished tasks don't drag. Click an empty part of a day to add a task due then.
+
+![Calendar month: finished tasks on the days they ran, In Progress and hatched Blocked bars reaching today, planned items and "+N more" on busy days](screenshots/calendar-month.png)
 
 ## 8. The app in the background
 
