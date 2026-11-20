@@ -65,6 +65,10 @@ interface SeedTask {
   doneDaysAgo?: number
   /** Days ago the task was created. */
   createdDaysAgo?: number
+  /** In progress / blocked: days ago it was actually started (fractional allowed). */
+  startedDaysAgo?: number
+  /** Done: hours from actual start to completion; 0 = started and completed at once. */
+  tookHours?: number
 }
 
 export interface SeedOptions {
@@ -96,8 +100,19 @@ export function seedDemoData(repos: Repos, options: SeedOptions = {}): number {
     { title: 'Order new running shoes', priority: 1, tags: ['health', 'errand'] },
     { title: 'Read "Designing Data-Intensive Applications" ch. 5', priority: 1, tags: ['reading'] },
     { title: 'Look into standing desk options', priority: 1, tags: ['home'] },
-    { title: 'Ask IT about VPN access for contractors', status: 'blocked', tags: ['work', 'ops'] },
-    { title: 'Draft blog post on the migration', status: 'in_progress', tags: ['work'] },
+    {
+      title: 'Ask IT about VPN access for contractors',
+      status: 'blocked',
+      tags: ['work', 'ops'],
+      startedDaysAgo: 10,
+    },
+    // In progress with no planned dates: still shows on Timeline / Calendar from its start.
+    {
+      title: 'Draft blog post on the migration',
+      status: 'in_progress',
+      tags: ['work'],
+      startedDaysAgo: 3,
+    },
     // --- overdue
     { title: 'Submit expense report', priority: 3, due: -3, tags: ['work', 'urgent'] },
     { title: 'Renew car insurance', priority: 4, due: -1, tags: ['home', 'urgent'] },
@@ -106,8 +121,16 @@ export function seedDemoData(repos: Repos, options: SeedOptions = {}): number {
       due: -2,
       tags: ['meeting'],
       status: 'in_progress',
+      startedDaysAgo: 2.5,
     },
-    { title: 'Call the plumber back', priority: 2, due: -6, tags: ['home'], status: 'blocked' },
+    {
+      title: 'Call the plumber back',
+      priority: 2,
+      due: -6,
+      tags: ['home'],
+      status: 'blocked',
+      startedDaysAgo: 8,
+    },
     // --- due today
     {
       title: 'Prepare slides for the 3pm review',
@@ -115,6 +138,7 @@ export function seedDemoData(repos: Repos, options: SeedOptions = {}): number {
       due: 0,
       tags: ['work', 'meeting'],
       status: 'in_progress',
+      startedDaysAgo: 0.1,
     },
     { title: 'Pick up dry cleaning', priority: 1, due: 0, tags: ['errand'] },
     { title: 'Review PR #1234 from Li', priority: 3, due: 0, tags: ['work'] },
@@ -145,6 +169,7 @@ export function seedDemoData(repos: Repos, options: SeedOptions = {}): number {
       tags: ['work', 'ops'],
       status: 'in_progress',
       description: NOTES_DESCRIPTION,
+      startedDaysAgo: 4,
     },
     {
       title: 'Write performance self-review',
@@ -153,6 +178,7 @@ export function seedDemoData(repos: Repos, options: SeedOptions = {}): number {
       due: 9,
       tags: ['work'],
       status: 'in_progress',
+      startedDaysAgo: 1.5,
     },
     // --- future (hidden on Today/Week)
     {
@@ -181,6 +207,7 @@ export function seedDemoData(repos: Repos, options: SeedOptions = {}): number {
       due: 60,
       tags: ['home'],
       status: 'blocked',
+      startedDaysAgo: 12,
     },
     // --- done today
     {
@@ -189,6 +216,7 @@ export function seedDemoData(repos: Repos, options: SeedOptions = {}): number {
       tags: ['home'],
       due: 0,
       doneDaysAgo: 0,
+      tookHours: 0,
     },
     {
       title: 'Approve design mockups',
@@ -196,6 +224,7 @@ export function seedDemoData(repos: Repos, options: SeedOptions = {}): number {
       priority: 3,
       tags: ['work'],
       doneDaysAgo: 0,
+      tookHours: 3.3,
     },
     {
       title: 'Stand-up: share blockers',
@@ -203,6 +232,7 @@ export function seedDemoData(repos: Repos, options: SeedOptions = {}): number {
       priority: 1,
       tags: ['meeting'],
       doneDaysAgo: 0,
+      tookHours: 0.25,
     },
     // --- done earlier this week (falls back to "today" when today is the first day of the week)
     {
@@ -211,12 +241,14 @@ export function seedDemoData(repos: Repos, options: SeedOptions = {}): number {
       priority: 1,
       tags: ['work'],
       doneDaysAgo: Math.min(1, daysSinceWeekStart),
+      tookHours: 0.5,
     },
     {
       title: 'Restock coffee beans',
       status: 'done',
       tags: ['errand'],
       doneDaysAgo: Math.min(2, daysSinceWeekStart),
+      tookHours: 26,
     },
     // --- done last week / last month
     {
@@ -225,6 +257,7 @@ export function seedDemoData(repos: Repos, options: SeedOptions = {}): number {
       priority: 3,
       tags: ['work'],
       doneDaysAgo: daysSinceWeekStart + 2,
+      tookHours: 12 * 24,
     },
     {
       title: 'Return library books',
@@ -232,6 +265,7 @@ export function seedDemoData(repos: Repos, options: SeedOptions = {}): number {
       priority: 1,
       tags: ['reading', 'errand'],
       doneDaysAgo: daysSinceWeekStart + 4,
+      tookHours: 50,
     },
     {
       title: 'Set up new laptop',
@@ -240,6 +274,7 @@ export function seedDemoData(repos: Repos, options: SeedOptions = {}): number {
       tags: ['work', 'ops'],
       doneDaysAgo: 24,
       description: CHECKLIST_DESCRIPTION,
+      tookHours: 9 * 24 + 4,
     },
     {
       title: 'Cancel unused streaming subscription',
@@ -247,8 +282,17 @@ export function seedDemoData(repos: Repos, options: SeedOptions = {}): number {
       priority: 1,
       tags: ['home'],
       doneDaysAgo: 33,
+      tookHours: 0,
     },
-    { title: 'Flu shot', status: 'done', priority: 2, tags: ['health'], doneDaysAgo: 40, due: -40 },
+    {
+      title: 'Flu shot',
+      status: 'done',
+      priority: 2,
+      tags: ['health'],
+      doneDaysAgo: 40,
+      due: -40,
+      tookHours: 1,
+    },
   ]
 
   return repos.db.transaction(() => {
@@ -273,8 +317,9 @@ export function seedDemoData(repos: Repos, options: SeedOptions = {}): number {
         tagIds: (t.tags ?? []).map((n) => tagIds.get(n)).filter((x): x is string => !!x),
       })
       const createdDaysAgo = t.createdDaysAgo ?? Math.max(t.doneDaysAgo ?? 0, 1) + ((i * 7) % 11)
-      const createdAt = now - createdDaysAgo * DAY - i * 60_000
+      let createdAt = now - createdDaysAgo * DAY - i * 60_000
       let completedAt: number | null = null
+      let startedAt: number | null = null
       if (t.status === 'done') {
         // Done "today" tasks get a time earlier today (never in the future).
         const startOfToday = startOfLocalDayMs(today)
@@ -283,10 +328,22 @@ export function seedDemoData(repos: Repos, options: SeedOptions = {}): number {
           daysAgo === 0
             ? Math.max(startOfToday, now - (i % 5) * HOUR - 15 * 60_000)
             : startOfLocalDayMs(addDays(today, -daysAgo)) + 10 * HOUR + (i % 6) * HOUR
+        startedAt = completedAt - Math.round((t.tookHours ?? 0) * HOUR)
+      } else if (t.status === 'in_progress' || t.status === 'blocked') {
+        // At least a few minutes ago, never in the future.
+        startedAt = now - Math.max(Math.round((t.startedDaysAgo ?? 1) * DAY), 10 * 60_000)
       }
+      // Keep created_at <= started_at <= completed_at.
+      if (startedAt !== null) createdAt = Math.min(createdAt, startedAt - (1 + (i % 4)) * HOUR)
       repos.db.run(
-        'UPDATE tasks SET created_at = ?, updated_at = ?, completed_at = ? WHERE id = ?',
-        [createdAt, Math.max(createdAt, completedAt ?? createdAt), completedAt, task.id],
+        'UPDATE tasks SET created_at = ?, updated_at = ?, started_at = ?, completed_at = ? WHERE id = ?',
+        [
+          createdAt,
+          Math.max(createdAt, completedAt ?? startedAt ?? createdAt),
+          startedAt,
+          completedAt,
+          task.id,
+        ],
       )
     })
     return tasks.length

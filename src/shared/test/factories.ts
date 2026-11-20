@@ -17,6 +17,7 @@ export function makeTask(overrides: Partial<Task> = {}): Task {
     tagIds: [],
     createdAt: 1_700_000_000_000 + seq,
     updatedAt: 1_700_000_000_000 + seq,
+    startedAt: null,
     completedAt: null,
     ...overrides,
   }

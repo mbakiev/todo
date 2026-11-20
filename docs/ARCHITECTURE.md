@@ -109,6 +109,7 @@ CREATE TABLE tasks (
   position      REAL NOT NULL,                 -- manual order within a status; lower = higher up
   created_at    INTEGER NOT NULL,              -- epoch ms
   updated_at    INTEGER NOT NULL,
+  started_at    INTEGER,                       -- set when status leaves 'not_started' (migration 002)
   completed_at  INTEGER,                       -- set when status becomes 'done', cleared when it leaves
   deleted_at    INTEGER                        -- soft delete (enables Undo); purged after 30 days
 );
@@ -136,7 +137,23 @@ Rules enforced in the repository layer (not the UI):
 
 - Dates are calendar dates as `YYYY-MM-DD` strings; never `Date`/timestamps. If both are
   set and `start_date > due_date`, reject.
-- `completed_at` is maintained automatically on status transitions.
+- `start_date` / `due_date` are the **plan** (user-edited). `started_at` / `completed_at`
+  are the **record**: maintained automatically on status transitions (create, update,
+  move), never user-edited, not in the `tasks.update` patch. One pure rule,
+  `statusTimestamps` in `shared/lifecycle.ts`, used by the repo and the renderer's
+  optimistic store paths alike:
+  - leaving `not_started` (or created started): `started_at = now` if null, else kept;
+  - entering `done`: `completed_at = now` (Not Started → Done: both the same instant);
+  - leaving `done` (reopen): `completed_at = NULL`, the original `started_at` kept;
+  - In Progress ↔ Blocked, or same status: unchanged; back to `not_started`: both NULL.
+
+  Invariants: `started_at` set ⇔ status ≠ `not_started`; `completed_at` set ⇔ `done`;
+  `started_at <= completed_at`. Rows that break the first (legacy / imported / test) are
+  read through `effectiveStartedAt`: `completedAt` (else `updatedAt`) for done,
+  `createdAt` for In Progress / Blocked — so views never hide or crash on them.
+- Migration 002 adds `started_at` and backfills it: done → `COALESCE(completed_at,
+  updated_at)` (zero length; the start was never seen), In Progress / Blocked →
+  `created_at`, Not Started → NULL.
 - `updated_at` is bumped on every mutation.
 - New tasks get `position = (min position in that status) - 1`, i.e. top of the column.
 - Reordering sets `position` to the midpoint of the two neighbours; if the gap falls
@@ -153,7 +170,8 @@ interface Task {
   status: Status; priority: Priority;
   startDate: string | null; dueDate: string | null;
   position: number; tagIds: string[];
-  createdAt: number; updatedAt: number; completedAt: number | null;
+  createdAt: number; updatedAt: number;
+  startedAt: number | null; completedAt: number | null;   // the record (epoch ms)
 }
 interface Tag { id: string; name: string; color: string; createdAt: number; }
 ```
@@ -177,6 +195,7 @@ interface Api {
                     tagIds?: string[]; newTagNames?: string[] }): Promise<Task>;
     update(id: string, patch: Partial<Pick<Task, 'title' | 'description' | 'status' | 'priority'
                     | 'startDate' | 'dueDate' | 'position' | 'tagIds'>>): Promise<Task>;
+    // startedAt / completedAt are never patched: create / update / move derive them (§4).
     // Reorder / change column. The repo computes the midpoint between the neighbours and
     // renumbers the column when needed; renumbered siblings are broadcast via dataChanged.
     move(id: string, input: { status?: Status; beforeId: string | null;
@@ -242,6 +261,17 @@ calendar date; views must refresh when the date rolls over (check on a timer and
 window focus).
 
 Definitions: `anchor(task) = startDate ?? dueDate`. `open` = status is not `done`.
+**Plan** = `startDate` / `dueDate` (UI: "Start date", "Due"); **record** = `startedAt` /
+`completedAt` (UI: "Started", "Completed"); `startedOn` / `completedOn` are their local
+dates. **Display span** (`displaySpan(task, today)`, inclusive dates, what Timeline and
+Calendar draw):
+- Not Started: the plan (`taskSpan`; a single date is one day; none when undated),
+  `source: 'planned'`;
+- In Progress / Blocked: `startedOn → max(today, dueDate ?? today)`, `source: 'actual'`,
+  `ongoing` — never none, so every started task appears;
+- Done: `startedOn → completedOn`, `source: 'actual'`.
+
+`end >= start` always (clamped).
 
 | View | Shows |
 |---|---|
@@ -249,8 +279,8 @@ Definitions: `anchor(task) = startDate ?? dueDate`. `open` = status is not `done
 | **This Week** (board) | Open tasks where `anchor` is null or `anchor <= end of this week`. Done column: only tasks completed within this week. Week start comes from settings (default Monday). |
 | **Everything** (board) | All tasks. Done column sorted by `completedAt` desc, showing the newest 50 with a "Show more" control. |
 | **List** | All tasks in a sortable table. |
-| **Timeline** (Gantt) | Open tasks that have at least one date — future-dated work plus anything overdue. Completed tasks hidden by default (toggle to show). |
-| **Calendar** | Tasks that have at least one date. |
+| **Timeline** (Gantt) | Open tasks with a display span — dated Not Started work (future plus overdue) and every started task. Completed tasks hidden by default (toggle to show); done tasks whose span ends before the range start are left out. |
+| **Calendar** | Tasks with a display span; done included unless toggled off. |
 
 A task is **overdue** when it is open and `dueDate < today`. Overdue is shown in red
 everywhere; due-today in amber.
@@ -298,13 +328,45 @@ Click header to sort; group-by selector (None / Status / Priority); status filte
 - Left pane: task titles (sticky). Right pane: horizontally scrolling day grid with a
   "today" line and weekend shading. Zoom: Day / Week / Month column scale. An overdue
   task's left-pane title is red with the calendar's small alert icon.
-- Bar spans `startDate → dueDate`; a task with a single date is a one-day bar. Bar colour
-  follows priority; overdue bars are red-outlined.
-- Range starts one week before today. Tasks dated earlier than the range start are
-  clamped to the left edge with an overdue marker so ancient tasks do not stretch the
-  chart. Range extends to the latest task date (min 6 weeks ahead).
-- Rows sorted by anchor date. Drag a bar to move it; drag an edge to resize → updates
-  dates. Click opens the detail panel.
+- One bar per task over its display span. Bar colour follows priority; overdue bars are
+  red-outlined. Per status (`data-status`, `data-source`, `data-ongoing` on the bar):
+  - Not Started: the plan.
+  - In Progress: solid from `startedOn` to today; a future due date continues it as a
+    fainter, dashed-outline planned remainder. Ending at today only because it is still
+    open (no due date ahead), the bar runs flush to the end of today's column with a flat
+    right edge ("still going", like a clamped edge).
+  - Blocked: as In Progress, with a diagonal hatch (`.bg-hatch`, `--status-blocked`) over
+    the elapsed part.
+  - Done (only with Completed on): `startedOn → completedOn`, a quieter fill, label not
+    struck through.
+- Range (`timelineRange`): starts one week before today, or earlier at the earliest
+  **actual** span start (started work, and with Completed on finished work), but never
+  more than `TIMELINE_MAX_LOOKBACK_DAYS` (365) back; planned spans never pull it back.
+  Anything starting earlier is clamped to the left edge (with an overdue marker when
+  overdue) so ancient tasks do not stretch the chart. Extends to the latest span end
+  (min 6 weeks ahead).
+- Rows sorted by display-span start, then priority desc, due asc, oldest first. Dragging
+  edits the plan only (`dragModes` / `applyDrag`): Not Started bars move and resize; an
+  In Progress / Blocked bar only drags its end handle, which sets `dueDate` to the new drawn
+  end, clamped to `>= today` (an unchanged end is a no-op, so an overdue due date is never
+  rewritten by a zero-change drag); if the planned `startDate` would then fall after the
+  new due date, the same patch moves it to `startedOn` (clamped `<= due`) — the plan's
+  start is superseded once work has started. Done bars do not drag. Click opens the detail
+  panel.
+- Scroll position: today near the left edge on first render and on "Today". Afterwards the
+  date at the visible left edge stays put when the zoom changes **and** when the range
+  start moves with the data (Completed toggled, a filter, the earliest started task
+  finished or deleted, midnight): `rebaseScrollLeft` in `timelineGeometry.ts`, one layout
+  effect for both so they never double-shift. Vertically, on first render and on "Today",
+  the first row that is open or whose span reaches `today − 7` is scrolled to the top
+  (with its group header), so old history does not fill the first screen.
+- Tooltip, record first (`describeProgress` in `shared/views.ts`, durations via
+  `formatElapsed` in `shared/dates.ts`): In Progress "Started Nov 3 · in progress 16 days",
+  Blocked "Blocked · started Nov 3 · 16 days", each plus "Due Nov 25" / "Due today" /
+  "Overdue · was due Nov 14" when it has a due date; Done "Nov 3 – Nov 12 · took 9 days"
+  (same day "Nov 12 · took 3 h 20 min"; started and completed at the same instant
+  "Completed Nov 12"). Not Started bars keep the plan wording.
+- Empty state: "Tasks with a date, and anything in progress, show up here."
 - A bar's label sticks to the visible left edge of the grid when the bar's start is
   scrolled off (until the bar's end pushes it out), at every zoom; the bar clips with
   `overflow: clip` so it is not a scroll container. A start-only task's tooltip reads
@@ -312,10 +374,20 @@ Click header to sort; group-by selector (None / Status / Priority); status filte
 
 ### Calendar
 - Month grid (week start from settings), prev/next/today navigation.
-- A task with both dates renders as a bar spanning start→due (like all-day events);
-  a task with one date renders as a chip on that day. Overflow collapses to "+N more"
-  with a popover (start-only tasks there carry the muted "Starts <date>" badge).
-- Drag a task to another day to shift its dates (duration preserved). Clicking an empty
+- Laid out by display span: a multi-day span renders as a bar (like all-day events), a
+  one-day span as a chip. So every In Progress / Blocked task appears (`startedOn →
+  max(today, due)`) and done tasks appear on the days they actually ran, not their plan.
+  An ongoing bar is split at today like the Timeline's: the days on/before today are the
+  elapsed part (normal fill), the days after it up to the due date a lighter, dashed planned
+  remainder (`WeekSegment.elapsedCols`, recomputed per piece `fitWeek` cuts). Blocked items
+  carry a hatch over the elapsed part only and the small Blocked status icon (bars, chips,
+  popover rows). Started / done items' `title` adds the `describeProgress` wording
+  ("Title — Started Nov 3 · in progress 16 days · Due Nov 25").
+- Overflow collapses to "+N more" with a popover: start-only Not Started tasks there carry
+  the muted "Starts <date>" badge; started tasks "Started <date>", done tasks
+  "Done <date>".
+- Drag a Not Started task to another day to shift its plan (duration preserved); started
+  and done items do not drag (click still opens the panel). Clicking an empty
   day opens the new-task dialog with due date prefilled (while the detail panel is open, that
   click only closes the panel, §7).
 - Completed tasks are dimmed and struck through; toggle to hide them.
@@ -335,8 +407,10 @@ open it does nothing.
 Contents, top to bottom: title (large inline-editable), property rows — status, priority,
 start date, due date (date pickers with Today / Tomorrow / Next week / Clear presets),
 tags (combobox, create-on-type, coloured chips) — then the description editor, then a
-footer with created / updated / completed timestamps, **Copy as Markdown**, and Delete.
-At narrow panel widths the footer shows only "Updated …" (all timestamps in its tooltip)
+footer with created / started / updated / completed timestamps, **Copy as Markdown**, and
+Delete. Every timestamp's tooltip lists them all, plus "Took <duration>" for a done task
+whose start is before its completion. As the panel narrows, "Created" drops first, then
+(for done tasks) "Started"; below 440 px the footer shows only "Updated …"
 with an icon-only Copy button, and the editor toolbar keeps one line by moving its
 least-used buttons (strikethrough, inline code, H3, quote, code block) into a "More" menu.
 
@@ -464,7 +538,10 @@ Stored in the `settings` table; defaults in `shared/constants.ts` (`defaultSetti
   newer `updatedAt` wins; tags: all id matches first, then name matches only against local
   tags no id match claimed, then the rest are created) or **Replace all**. Both take a
   pre-import backup first (unless the local DB has no tasks). Runs in one transaction; returns counts. A leading UTF-8 BOM
-  is accepted.
+  is accepted. A task's `startedAt` is optional (older files lack it, still
+  `formatVersion: 1`); import restores the §4 invariants: `completedAt` only for done
+  (`?? updatedAt`), `startedAt` NULL for Not Started, else `startedAt ??` the
+  `effectiveStartedAt` fallback, clamped `<= completedAt`.
 
 ### Startup problems
 Opening the database runs through `main/startup.ts` (decisions and file operations in the

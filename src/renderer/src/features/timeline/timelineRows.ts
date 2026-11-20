@@ -1,8 +1,9 @@
 // Row model for the Timeline: sort order and optional grouping. Pure.
 
 import { PRIORITIES, PRIORITY_LABELS, STATUSES, STATUS_LABELS } from '@shared/constants'
-import type { Priority, Status, Task } from '@shared/types'
-import { anchor } from '@shared/views'
+import { addDays } from '@shared/dates'
+import type { LocalDate, Priority, Status, Task } from '@shared/types'
+import { displaySpan, isOpen } from '@shared/views'
 
 export type GroupBy = 'none' | 'status' | 'priority'
 export const GROUP_BY_LABELS: Record<GroupBy, string> = {
@@ -30,24 +31,36 @@ function cmpNullable(a: string | null, b: string | null): number {
   return a < b ? -1 : 1
 }
 
-/** Anchor date asc → priority desc → due asc → oldest first → id. */
-export function compareTimelineTasks(a: Task, b: Task): number {
-  return (
-    cmpNullable(anchor(a), anchor(b)) ||
+/**
+ * Display-span start asc (where the bar begins: the plan, or when work really started) →
+ * priority desc → due asc → oldest first → id. Tasks without a span sort last.
+ */
+export function compareTimelineTasks(today: LocalDate): (a: Task, b: Task) => number {
+  const starts = new Map<Task, LocalDate | null>()
+  const startOf = (t: Task): LocalDate | null => {
+    let s = starts.get(t)
+    if (s === undefined) {
+      s = displaySpan(t, today)?.start ?? null
+      starts.set(t, s)
+    }
+    return s
+  }
+  return (a, b) =>
+    cmpNullable(startOf(a), startOf(b)) ||
     b.priority - a.priority ||
     cmpNullable(a.dueDate, b.dueDate) ||
     a.createdAt - b.createdAt ||
     (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
-  )
 }
 
 /** Sorted rows; with grouping, a header row precedes each non-empty group. */
 export function buildTimelineRows(
   tasks: readonly Task[],
+  today: LocalDate,
   groupBy: GroupBy,
   collapsed: ReadonlySet<string> = new Set(),
 ): TimelineRow[] {
-  const sorted = tasks.slice().sort(compareTimelineTasks)
+  const sorted = tasks.slice().sort(compareTimelineTasks(today))
   if (groupBy === 'none') return sorted.map((task) => ({ kind: 'task', task }))
 
   const groups: Array<{
@@ -87,4 +100,36 @@ export function buildTimelineRows(
     if (!isCollapsed) for (const task of g.tasks) rows.push({ kind: 'task', task })
   }
   return rows
+}
+
+/**
+ * The row to put at the top on first render and on "Today": the first task row that is open
+ * (open work, overdue included, always stays in sight) or whose display span reaches
+ * `today − 7` (the left edge after "Today"). Old history rows above it are skipped, so with
+ * Completed on the first screen is not a column of bars far off to the left. A task that is
+ * first in its group brings its group header along. 0 when no row qualifies.
+ */
+export function firstRecentRowIndex(rows: readonly TimelineRow[], today: LocalDate): number {
+  const from = addDays(today, -7)
+  const i = rows.findIndex((r) => {
+    if (r.kind !== 'task') return false
+    if (isOpen(r.task)) return true
+    const span = displaySpan(r.task, today)
+    return span !== null && span.end >= from
+  })
+  if (i <= 0) return 0
+  return rows[i - 1]?.kind === 'group' ? i - 1 : i
+}
+
+/** Vertical offset (px) of `rows[index]` in the body, from fixed row heights. */
+export function rowOffset(
+  rows: readonly TimelineRow[],
+  index: number,
+  heights: { task: number; group: number },
+): number {
+  let y = 0
+  for (let i = 0; i < index && i < rows.length; i++) {
+    y += rows[i]?.kind === 'group' ? heights.group : heights.task
+  }
+  return y
 }

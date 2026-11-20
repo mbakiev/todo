@@ -276,6 +276,15 @@
   .scrollbar-thin {
     scrollbar-width: thin;
   }
+  /* Diagonal hatch laid over a bar's own fill: a Blocked task (started, stalled) in the
+     Timeline and Calendar. Reads without colour; tint via --hatch (defaults to the status). */
+  .bg-hatch {
+    background-image: repeating-linear-gradient(
+      135deg,
+      color-mix(in oklab, var(--hatch, var(--status-blocked)) 55%, transparent) 0 1.5px,
+      transparent 1.5px 6px
+    );
+  }
 }
 
 /* Quick-add popup: a picker popover stays invisible while the window grows to make room for it

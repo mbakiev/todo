@@ -1,6 +1,7 @@
 // Raw writes used only by data import (services/dataTransfer.ts). Import keeps records' original
 // ids and timestamps, which tasksRepo / tagsRepo deliberately never allow, so it gets its own
 // small repo. Callers own the transaction.
+import { effectiveStartedAt } from '@shared/lifecycle'
 import type { ExportFile } from '@shared/types'
 import type { Db } from './connection'
 
@@ -40,6 +41,10 @@ export function createImportRepo(db: Db): ImportRepo {
       return row ? row.updated_at : null
     },
     writeTask(t, exists) {
+      // Restore the record invariants (spec §4): completedAt only for done; startedAt only
+      // once started, falling back like migration 002 when missing and never after completion.
+      const completedAt = t.status === 'done' ? (t.completedAt ?? t.updatedAt) : null
+      const startedAt = effectiveStartedAt({ ...t, completedAt })
       const values = [
         t.title.trim() || 'Untitled',
         t.description,
@@ -50,21 +55,22 @@ export function createImportRepo(db: Db): ImportRepo {
         t.position,
         t.createdAt,
         t.updatedAt,
-        t.status === 'done' ? (t.completedAt ?? t.updatedAt) : null,
+        startedAt,
+        completedAt,
         t.id,
       ]
       if (exists) {
         db.run(
           `UPDATE tasks SET title = ?, description = ?, status = ?, priority = ?, start_date = ?,
-             due_date = ?, position = ?, created_at = ?, updated_at = ?, completed_at = ?,
-             deleted_at = NULL WHERE id = ?`,
+             due_date = ?, position = ?, created_at = ?, updated_at = ?, started_at = ?,
+             completed_at = ?, deleted_at = NULL WHERE id = ?`,
           values,
         )
       } else {
         db.run(
           `INSERT INTO tasks (title, description, status, priority, start_date, due_date, position,
-             created_at, updated_at, completed_at, deleted_at, id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+             created_at, updated_at, started_at, completed_at, deleted_at, id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
           values,
         )
       }

@@ -17,6 +17,7 @@ const base: Task = {
   tagIds: [],
   createdAt: 1,
   updatedAt: 1,
+  startedAt: null,
   completedAt: null,
 }
 
@@ -56,6 +57,93 @@ describe('tasksStore', () => {
     await p
     expect(useTasksStore.getState().byId.a?.completedAt).toBe(99)
     expect(useTasksStore.getState().pending).toEqual({})
+  })
+
+  describe('optimistic start / completion record (shared statusTimestamps)', () => {
+    // Settle every write left pending so nothing stays in flight for later tests (whenIdle).
+    const open: Array<(t: Task) => void> = []
+    afterEach(async () => {
+      for (const resolve of open.splice(0)) resolve(base)
+      await useTasksStore.getState().whenIdle()
+    })
+    const pendingUpdate = () => {
+      const d = deferred<Task>()
+      open.push(d.resolve)
+      installMockApi({
+        tasks: { update: vi.fn(() => d.promise), move: vi.fn(() => d.promise) },
+      })
+      return d
+    }
+    it('update: not_started → in_progress records the start; → done keeps it', async () => {
+      pendingUpdate()
+      void useTasksStore.getState().update('a', { status: 'in_progress' })
+      const started = a()?.startedAt
+      expect(started).toEqual(expect.any(Number))
+      expect(a()?.completedAt).toBeNull()
+      void useTasksStore.getState().update('a', { status: 'done' })
+      expect(a()?.startedAt).toBe(started)
+      expect(a()?.completedAt).toEqual(expect.any(Number))
+    })
+    it('update: not_started → done gives identical timestamps', () => {
+      pendingUpdate()
+      void useTasksStore.getState().update('a', { status: 'done' })
+      expect(a()?.startedAt).not.toBeNull()
+      expect(a()?.startedAt).toBe(a()?.completedAt)
+    })
+    it('update: reopen keeps the original start; back to not_started clears both', () => {
+      useTasksStore.setState({
+        byId: { a: { ...base, status: 'done', startedAt: 10, completedAt: 20 } },
+      })
+      pendingUpdate()
+      void useTasksStore.getState().update('a', { status: 'blocked' })
+      expect(a()).toMatchObject({ startedAt: 10, completedAt: null })
+      void useTasksStore.getState().update('a', { status: 'in_progress' })
+      expect(a()).toMatchObject({ startedAt: 10, completedAt: null })
+      void useTasksStore.getState().update('a', { status: 'not_started' })
+      expect(a()).toMatchObject({ startedAt: null, completedAt: null })
+    })
+    it('update: non-status edits leave the record alone', () => {
+      useTasksStore.setState({ byId: { a: { ...base, status: 'in_progress', startedAt: 10 } } })
+      pendingUpdate()
+      void useTasksStore.getState().update('a', { title: 'B' })
+      expect(a()).toMatchObject({ startedAt: 10, completedAt: null })
+    })
+    it('move across columns', () => {
+      pendingUpdate()
+      const mv = (status: Task['status']) =>
+        void useTasksStore.getState().move('a', { status, beforeId: null, afterId: null })
+      mv('blocked')
+      const started = a()?.startedAt
+      expect(started).toEqual(expect.any(Number))
+      mv('in_progress')
+      expect(a()).toMatchObject({ startedAt: started, completedAt: null })
+      mv('done')
+      expect(a()?.startedAt).toBe(started)
+      expect(a()?.completedAt).toEqual(expect.any(Number))
+      mv('not_started')
+      expect(a()).toMatchObject({ startedAt: null, completedAt: null })
+    })
+    it('create: started statuses get a start, done gets identical timestamps', () => {
+      installMockApi({
+        tasks: {
+          create: vi.fn(() => {
+            const d = deferred<Task>()
+            open.push(d.resolve)
+            return d.promise
+          }),
+        },
+      })
+      void useTasksStore.getState().create({ title: 'N', status: 'in_progress' })
+      void useTasksStore.getState().create({ title: 'D', status: 'done' })
+      void useTasksStore.getState().create({ title: 'S' })
+      const byTitle = (title: string) =>
+        Object.values(useTasksStore.getState().byId).find((t) => t.title === title)
+      expect(byTitle('N')?.startedAt).toEqual(expect.any(Number))
+      expect(byTitle('N')?.completedAt).toBeNull()
+      expect(byTitle('D')?.startedAt).toBe(byTitle('D')?.completedAt)
+      expect(byTitle('D')?.startedAt).not.toBeNull()
+      expect(byTitle('S')).toMatchObject({ startedAt: null, completedAt: null })
+    })
   })
 
   it('rolls back on error', async () => {

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { DEFAULT_PRIORITY, SOFT_DELETE_RETENTION_MS } from '@shared/constants'
 import { isLocalDate } from '@shared/dates'
+import { statusTimestamps } from '@shared/lifecycle'
 import { compareByPosition, needsRenumber, positionBetween, topPosition } from '@shared/ordering'
 import type { LocalDate, Priority, Status, Tag, Task } from '@shared/types'
 import type { Db } from './connection'
@@ -18,6 +19,8 @@ interface TaskRow {
   position: number
   created_at: number
   updated_at: number
+  /** Added by migration 002. */
+  started_at: number | null
   completed_at: number | null
   deleted_at: number | null
 }
@@ -119,6 +122,7 @@ export function createTasksRepo(db: Db, tags: TagsRepo, now: () => number = Date
       tagIds: tagIds.slice().sort(),
       createdAt: r.created_at,
       updatedAt: r.updated_at,
+      startedAt: r.started_at,
       completedAt: r.completed_at,
     }
   }
@@ -202,11 +206,12 @@ export function createTasksRepo(db: Db, tags: TagsRepo, now: () => number = Date
         assertDates(startDate, dueDate)
         const status = input.status ?? 'not_started'
         const ts = now()
+        const stamps = statusTimestamps(null, status, ts)
         const id = randomUUID()
         db.run(
           `INSERT INTO tasks (id, title, description, status, priority, start_date, due_date,
-             position, created_at, updated_at, completed_at, deleted_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+             position, created_at, updated_at, started_at, completed_at, deleted_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
           [
             id,
             title,
@@ -218,7 +223,8 @@ export function createTasksRepo(db: Db, tags: TagsRepo, now: () => number = Date
             columnTop(status),
             ts,
             ts,
-            status === 'done' ? ts : null,
+            stamps.startedAt,
+            stamps.completedAt,
           ],
         )
         const createdTags: Tag[] = []
@@ -251,7 +257,9 @@ export function createTasksRepo(db: Db, tags: TagsRepo, now: () => number = Date
         const ts = nextStamp(existing)
         if (patch.status !== undefined && patch.status !== existing.status) {
           next.status = patch.status
-          next.completedAt = patch.status === 'done' ? ts : null
+          const stamps = statusTimestamps(existing, patch.status, ts)
+          next.startedAt = stamps.startedAt
+          next.completedAt = stamps.completedAt
           // Changing column without an explicit position lands at the top of the new column.
           if (patch.position === undefined) next.position = columnTop(patch.status, id)
         }
@@ -263,7 +271,8 @@ export function createTasksRepo(db: Db, tags: TagsRepo, now: () => number = Date
 
         db.run(
           `UPDATE tasks SET title = ?, description = ?, status = ?, priority = ?, start_date = ?,
-             due_date = ?, position = ?, updated_at = ?, completed_at = ? WHERE id = ?`,
+             due_date = ?, position = ?, updated_at = ?, started_at = ?, completed_at = ?
+             WHERE id = ?`,
           [
             next.title,
             next.description,
@@ -273,6 +282,7 @@ export function createTasksRepo(db: Db, tags: TagsRepo, now: () => number = Date
             next.dueDate,
             next.position,
             ts,
+            next.startedAt,
             next.completedAt,
             id,
           ],
@@ -306,11 +316,11 @@ export function createTasksRepo(db: Db, tags: TagsRepo, now: () => number = Date
         }
         const position = positionBetween(before, after)
         const ts = nextStamp(existing)
-        const completedAt =
-          status === existing.status ? existing.completedAt : status === 'done' ? ts : null
+        const { startedAt, completedAt } = statusTimestamps(existing, status, ts)
         db.run(
-          'UPDATE tasks SET status = ?, position = ?, completed_at = ?, updated_at = ? WHERE id = ?',
-          [status, position, completedAt, ts, id],
+          `UPDATE tasks SET status = ?, position = ?, started_at = ?, completed_at = ?,
+             updated_at = ? WHERE id = ?`,
+          [status, position, startedAt, completedAt, ts, id],
         )
         const renumbered = renumberedIds.map(mustGet)
         return { task: mustGet(id), renumbered }

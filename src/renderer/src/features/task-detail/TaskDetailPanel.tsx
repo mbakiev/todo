@@ -5,7 +5,9 @@ import { AlertCircle, Check, Copy, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { MAX_DESCRIPTION_LENGTH, MAX_TITLE_LENGTH } from '@shared/constants'
+import { formatElapsed } from '@shared/dates'
 import type { UpdateTaskPatch } from '@shared/ipc'
+import { effectiveStartedAt } from '@shared/lifecycle'
 import type { Task } from '@shared/types'
 import { isDueToday, isOverdue } from '@shared/views'
 import {
@@ -240,6 +242,7 @@ function PanelBody({ task }: { task: Task }) {
   }, [])
 
   const isDone = task.status === 'done'
+  const startedAt = effectiveStartedAt(task)
   const dueTone = isOverdue(task, today) ? 'overdue' : isDueToday(task, today) ? 'today' : 'default'
   const tags = useTaskTags(task.tagIds)
 
@@ -428,7 +431,8 @@ function PanelBody({ task }: { task: Task }) {
       </div>
 
       {/* Narrow panel (< 440px): only "Updated …" (every timestamp in its tooltip) and an
-          icon-only Copy button, so nothing truncates mid-word. */}
+          icon-only Copy button, so nothing truncates mid-word. Wider, the less useful labels
+          drop out first as more timestamps exist: Created, then (for done tasks) Started. */}
       <footer className="@container/footer shrink-0 border-t">
         <div className="flex h-11 items-center gap-2 px-3 text-[11.5px] text-muted-foreground">
           <div className="flex min-w-0 flex-1 items-center gap-2.5 pl-2">
@@ -436,12 +440,24 @@ function PanelBody({ task }: { task: Task }) {
               label="Created"
               at={task.createdAt}
               task={task}
-              // With a completion time too, "Created" makes room earlier.
+              // With a start / completion time too, "Created" makes room earlier.
               className={cn(
                 '@max-[440px]/footer:hidden',
-                task.completedAt !== null && '@max-[600px]/footer:hidden',
+                (startedAt !== null || task.completedAt !== null) && '@max-[600px]/footer:hidden',
+                startedAt !== null && task.completedAt !== null && '@max-[760px]/footer:hidden',
               )}
             />
+            {startedAt !== null && (
+              <Timestamp
+                label="Started"
+                at={startedAt}
+                task={task}
+                className={cn(
+                  '@max-[440px]/footer:hidden',
+                  task.completedAt !== null && '@max-[600px]/footer:hidden',
+                )}
+              />
+            )}
             <Timestamp label="Updated" at={task.updatedAt} task={task} />
             {task.completedAt !== null && (
               <Timestamp
@@ -628,6 +644,7 @@ function Timestamp({
     return () => clearInterval(t)
   }, [])
   const full = (ms: number): string => format(ms, "MMM d, yyyy 'at' h:mm a")
+  const startedAt = effectiveStartedAt(task)
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -638,8 +655,12 @@ function Timestamp({
       <TooltipContent side="top" className="px-2 py-1 leading-relaxed">
         {/* Every timestamp, so the compact footer (only "Updated") loses nothing. */}
         <div>Created {full(task.createdAt)}</div>
+        {startedAt !== null && <div>Started {full(startedAt)}</div>}
         <div>Updated {full(task.updatedAt)}</div>
         {task.completedAt !== null && <div>Completed {full(task.completedAt)}</div>}
+        {task.completedAt !== null && startedAt !== null && startedAt < task.completedAt && (
+          <div>Took {formatElapsed(task.completedAt - startedAt)}</div>
+        )}
       </TooltipContent>
     </Tooltip>
   )

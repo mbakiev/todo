@@ -53,7 +53,11 @@ export function parseExportFile(text: string): ExportFile {
       `The file is damaged or incomplete${where}: ${issue?.message ?? 'invalid'}`,
     )
   }
-  const file = parsed.data as ExportFile
+  // Files exported before start tracking lack `startedAt`; importRepo normalises it.
+  const file: ExportFile = {
+    ...parsed.data,
+    tasks: parsed.data.tasks.map((t) => ({ ...t, startedAt: t.startedAt ?? null })),
+  }
   const dupe = firstDuplicate(file.tasks.map((t) => t.id))
   if (dupe) throw new ImportError(`The file lists task ${dupe} more than once.`)
   const dupeTag = firstDuplicate(file.tags.map((t) => t.id))

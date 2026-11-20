@@ -80,6 +80,38 @@ describe('schemas', () => {
     expect(exportFileSchema.safeParse(file).success).toBe(true)
     expect(exportFileSchema.safeParse({ ...file, formatVersion: 2 }).success).toBe(false)
   })
+  it('export file: task startedAt is optional and nullable (older files lack it)', () => {
+    const task = {
+      id: 't',
+      title: 'x',
+      description: '',
+      status: 'done',
+      priority: 2,
+      startDate: null,
+      dueDate: null,
+      position: 0,
+      tagIds: [],
+      createdAt: 1,
+      updatedAt: 1,
+      completedAt: 2,
+    }
+    const file = (t: object) => ({
+      app: 'martin-todos',
+      formatVersion: 1,
+      exportedAt: 1,
+      tags: [],
+      tasks: [t],
+    })
+    expect(exportFileSchema.safeParse(file(task)).success).toBe(true)
+    expect(exportFileSchema.safeParse(file({ ...task, startedAt: null })).success).toBe(true)
+    const parsed = exportFileSchema.safeParse(file({ ...task, startedAt: 1 }))
+    expect(parsed.success && parsed.data.tasks[0]?.startedAt).toBe(1)
+    expect(exportFileSchema.safeParse(file({ ...task, startedAt: -1 })).success).toBe(false)
+    expect(exportFileSchema.safeParse(file({ ...task, startedAt: 'x' })).success).toBe(false)
+  })
+  it('task update patch does not accept startedAt (it is never user-edited)', () => {
+    expect(taskUpdatePatchSchema.safeParse({ startedAt: 1 }).success).toBe(false)
+  })
 })
 
 describe('defaultShortcuts', () => {

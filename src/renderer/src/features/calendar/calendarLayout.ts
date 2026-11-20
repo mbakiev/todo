@@ -1,6 +1,8 @@
 // Pure month-grid + lane layout for the Calendar view. No React/DOM; unit-tested.
 //
-// A week row is 7 day columns. Every task whose span intersects the week becomes one
+// A week row is 7 day columns. Every task whose DISPLAY span (`displaySpan`: the plan for
+// not_started tasks, the record — started → today/due or → completed — for started and done
+// tasks) intersects the week becomes one
 // segment clipped to the week; segments are packed into lanes (rows) like all-day events in
 // a typical calendar app: earliest start first, longer spans first, lowest free lane.
 // All date maths is on `YYYY-MM-DD` strings via shared/dates (never milliseconds), so DST
@@ -17,7 +19,12 @@ import {
   startOfWeek,
 } from '@shared/dates'
 import type { LocalDate, Task, WeekStartsOn } from '@shared/types'
-import { compareByAnchor, taskSpan } from '@shared/views'
+import {
+  compareDueThenPriority,
+  describeProgress,
+  displaySpan,
+  type DisplaySpan,
+} from '@shared/views'
 
 export const DAYS_PER_WEEK = 7
 
@@ -57,42 +64,81 @@ export interface WeekSegment {
   continuesBefore: boolean
   /** The task continues after this segment: flat right edge. */
   continuesAfter: boolean
-  /** `bar` = task has distinct start and due dates; `chip` = a single-day task. */
+  /** `bar` = the display span covers several days; `chip` = a single-day span. */
   kind: 'bar' | 'chip'
+  /** `planned` = a not_started task's plan (draggable); `actual` = what really happened. */
+  source: DisplaySpan['source']
+  /** Started and still open: the span runs (at least) to today. */
+  ongoing: boolean
+  /**
+   * Ongoing segments only (else null): how many of this segment's columns are on or before
+   * today (0 … columns). Those are the elapsed part; the rest is the planned remainder up to
+   * the due date, drawn lighter (and never hatched).
+   */
+  elapsedCols: number | null
 }
 
 export interface WeekLayout {
   weekStart: LocalDate
+  /** The `today` the layout was computed for (ongoing spans and elapsed columns depend on it). */
+  today: LocalDate
   segments: WeekSegment[]
   /** Number of lanes used (max lane + 1). */
   laneCount: number
 }
 
-/** Packs the tasks intersecting the week into lanes. Tasks outside the week are ignored. */
-export function layoutWeek(weekStart: LocalDate, tasks: readonly Task[]): WeekLayout {
+/** Columns `startCol … endCol` on or before today's column (which may lie outside the week). */
+function elapsedIn(startCol: number, endCol: number, todayCol: number): number {
+  return Math.max(0, Math.min(endCol, todayCol) - startCol + 1)
+}
+
+/**
+ * Packs the tasks whose display span intersects the week into lanes. Tasks outside the week
+ * (or without a span: undated not_started) are ignored. `today` decides where ongoing
+ * (in_progress / blocked) spans end.
+ */
+export function layoutWeek(
+  weekStart: LocalDate,
+  tasks: readonly Task[],
+  today: LocalDate,
+): WeekLayout {
   const weekEnd = addDays(weekStart, DAYS_PER_WEEK - 1)
   const raw: WeekSegment[] = []
+  const todayCol = diffDays(weekStart, today)
+  // Each segment's display-span start, computed once: the lane sort's tie-break is the hot
+  // path (many long-running tasks clamped to the same week tie on column and length).
+  const spanStart = new Map<Task, LocalDate>()
   for (const task of tasks) {
-    const span = taskSpan(task)
+    const span = displaySpan(task, today)
     if (!span || span.start > weekEnd || span.end < weekStart) continue
-    const from = maxDate(span.start, weekStart)
-    const to = minDate(span.end, weekEnd)
+    spanStart.set(task, span.start)
+    const startCol = diffDays(weekStart, maxDate(span.start, weekStart))
+    const endCol = diffDays(weekStart, minDate(span.end, weekEnd))
     raw.push({
       task,
-      startCol: diffDays(weekStart, from),
-      endCol: diffDays(weekStart, to),
+      startCol,
+      endCol,
       lane: 0,
       continuesBefore: span.start < weekStart,
       continuesAfter: span.end > weekEnd,
       kind: span.start === span.end ? 'chip' : 'bar',
+      source: span.source,
+      ongoing: span.ongoing,
+      elapsedCols: span.ongoing ? elapsedIn(startCol, endCol, todayCol) : null,
     })
   }
-  raw.sort(
-    (a, b) =>
+  // Same order as `compareByDisplayStart` after column and length.
+  const startOf = (t: Task): LocalDate => spanStart.get(t) ?? ''
+  raw.sort((a, b) => {
+    const sa = startOf(a.task)
+    const sb = startOf(b.task)
+    return (
       a.startCol - b.startCol ||
       b.endCol - b.startCol - (a.endCol - a.startCol) ||
-      compareByAnchor(a.task, b.task),
-  )
+      (sa < sb ? -1 : sa > sb ? 1 : 0) ||
+      compareDueThenPriority(a.task, b.task)
+    )
+  })
   // Interval-graph colouring: segments arrive by start column, so a lane is free when its
   // last occupied column is before this segment's start.
   const laneEnds: number[] = []
@@ -102,7 +148,7 @@ export function layoutWeek(weekStart: LocalDate, tasks: readonly Task[]): WeekLa
     laneEnds[lane] = seg.endCol
     seg.lane = lane
   }
-  return { weekStart, segments: raw, laneCount: laneEnds.length }
+  return { weekStart, today, segments: raw, laneCount: laneEnds.length }
 }
 
 export interface FittedWeek {
@@ -133,6 +179,7 @@ export function fitWeek(layout: WeekLayout, maxLanes: number): FittedWeek {
   const limit = topLane.map((top) => (top + 1 <= rows ? rows : Math.max(0, rows - 1)))
   const hiddenByCol = new Array<number>(DAYS_PER_WEEK).fill(0)
   const pieces: WeekSegment[] = []
+  const todayCol = diffDays(layout.weekStart, layout.today)
 
   for (const seg of byLane) {
     let runStart: number | null = null
@@ -144,6 +191,8 @@ export function fitWeek(layout: WeekLayout, maxLanes: number): FittedWeek {
         endCol: end,
         continuesBefore: seg.continuesBefore || runStart > seg.startCol,
         continuesAfter: seg.continuesAfter || end < seg.endCol,
+        // A cut piece counts its own elapsed columns.
+        elapsedCols: seg.elapsedCols === null ? null : elapsedIn(runStart, end, todayCol),
       })
       runStart = null
     }
@@ -161,7 +210,7 @@ export function fitWeek(layout: WeekLayout, maxLanes: number): FittedWeek {
 }
 
 /**
- * New dates for a task dragged by `deltaDays`: single-date tasks move that date, ranged
+ * New PLAN dates for a not_started task dragged by `deltaDays`: single-date tasks move that date, ranged
  * tasks shift both ends (duration preserved). Returns null when nothing changes.
  */
 export function shiftTaskDates(
@@ -173,4 +222,13 @@ export function shiftTaskDates(
     startDate: task.startDate === null ? null : addDays(task.startDate, deltaDays),
     dueDate: task.dueDate === null ? null : addDays(task.dueDate, deltaDays),
   }
+}
+
+/**
+ * Hover text for an item: the title, plus the record for started / done tasks
+ * ("Write report — Started Nov 3 · in progress 16 days · Due Nov 25").
+ */
+export function itemTitle(task: Task, today: LocalDate): string {
+  const progress = describeProgress(task, today)
+  return progress.length === 0 ? task.title : `${task.title} — ${progress.join(' · ')}`
 }

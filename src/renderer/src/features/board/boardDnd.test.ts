@@ -27,6 +27,7 @@ function task(id: string, status: Status, position: number): Task {
     tagIds: [],
     createdAt: 0,
     updatedAt: 0,
+    startedAt: status === 'not_started' ? null : 1,
     completedAt: status === 'done' ? 1 : null,
   }
 }

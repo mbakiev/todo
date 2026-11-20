@@ -149,6 +149,8 @@ export const exportedTaskSchema = z
     tagIds: z.array(idSchema),
     createdAt: z.number().int().nonnegative(),
     updatedAt: z.number().int().nonnegative(),
+    // Optional: files exported before start tracking lack it (normalised on import).
+    startedAt: z.number().int().nonnegative().nullable().optional(),
     completedAt: z.number().int().nonnegative().nullable(),
   })
   .refine(datesInOrder, DATE_ORDER_MSG)

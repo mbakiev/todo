@@ -7,6 +7,8 @@ import {
   checklistProgress,
   compareTagsByName,
   dateBadge,
+  describeProgress,
+  displaySpan,
   filterCalendar,
   filterTimeline,
   filterTodayBoard,
@@ -16,6 +18,7 @@ import {
   isInWeekBoard,
   isOverdue,
   sortTasks,
+  startedOn,
   taskSpan,
   tagsInDisplayOrder,
   tasksInRange,
@@ -192,33 +195,346 @@ describe('timeline and calendar', () => {
   const overdue = makeTask({ id: 'overdue', dueDate: '2026-10-01' })
   const future = makeTask({ id: 'future', startDate: '2026-12-01', dueDate: '2026-12-10' })
   const onlyStart = makeTask({ id: 'onlyStart', startDate: '2026-11-20' })
-  const done = makeTask({ id: 'done', status: 'done', dueDate: '2026-11-10', completedAt: 1 })
+  // Planned for 11-10, actually ran 11-08 → 11-11.
+  const done = makeTask({
+    id: 'done',
+    status: 'done',
+    dueDate: '2026-11-10',
+    startedAt: localMs(2026, 11, 8, 9),
+    completedAt: localMs(2026, 11, 11, 17),
+  })
+  // Undated but in progress since 11-02: must appear.
+  const working = makeTask({
+    id: 'working',
+    status: 'in_progress',
+    startedAt: localMs(2026, 11, 2, 10),
+  })
 
-  it('timeline: open dated tasks sorted by anchor; done hidden by default', () => {
-    const all = [undated, future, done, onlyStart, overdue]
-    expect(filterTimeline(all).map((t) => t.id)).toEqual(['overdue', 'onlyStart', 'future'])
-    expect(filterTimeline(all, { showCompleted: true }).map((t) => t.id)).toEqual([
+  it('timeline: open tasks with a display span sorted by its start; done hidden by default', () => {
+    const all = [undated, future, done, onlyStart, overdue, working]
+    expect(filterTimeline(all, TODAY).map((t) => t.id)).toEqual([
       'overdue',
+      'working',
+      'onlyStart',
+      'future',
+    ])
+    expect(filterTimeline(all, TODAY, { showCompleted: true }).map((t) => t.id)).toEqual([
+      'overdue',
+      'working',
       'done',
       'onlyStart',
       'future',
     ])
   })
-  it('calendar: all dated tasks, done shown by default', () => {
-    const all = [undated, future, done, onlyStart, overdue]
-    expect(filterCalendar(all)).toHaveLength(4)
-    expect(filterCalendar(all, { showCompleted: false })).toHaveLength(3)
+  it('timeline: done tasks ending before the range start are left out; open ones never are', () => {
+    const ancientDone = makeTask({
+      id: 'ancientDone',
+      status: 'done',
+      startedAt: localMs(2024, 1, 1),
+      completedAt: localMs(2024, 1, 5),
+    })
+    const ancientOpen = makeTask({
+      id: 'ancientOpen',
+      status: 'in_progress',
+      startedAt: localMs(2024, 1, 1),
+    })
+    const ancientPlan = makeTask({ id: 'ancientPlan', dueDate: '2024-01-01' })
+    // Ran before today − 7 but within the look-back: kept, and it pulls the range back.
+    const lastMonth = makeTask({
+      id: 'lastMonth',
+      status: 'done',
+      startedAt: localMs(2026, 10, 1),
+      completedAt: localMs(2026, 10, 3),
+    })
+    const ids = filterTimeline([ancientDone, ancientOpen, ancientPlan, lastMonth], TODAY, {
+      showCompleted: true,
+    }).map((t) => t.id)
+    expect(ids).toEqual(['ancientPlan', 'ancientOpen', 'lastMonth'])
   })
-  it('tasksInRange intersects spans', () => {
+  it('timeline: a done task ending inside the range (default look-back) stays', () => {
+    const recent = makeTask({
+      id: 'recent',
+      status: 'done',
+      startedAt: localMs(2026, 11, 7),
+      completedAt: localMs(2026, 11, 7, 15),
+    })
+    expect(filterTimeline([recent], TODAY, { showCompleted: true })).toHaveLength(1)
+    expect(filterTimeline([recent], TODAY)).toHaveLength(0)
+  })
+  it('calendar: everything with a display span, done shown by default', () => {
+    const all = [undated, future, done, onlyStart, overdue, working]
+    expect(filterCalendar(all, TODAY).map((t) => t.id)).toEqual([
+      'overdue',
+      'working',
+      'done',
+      'onlyStart',
+      'future',
+    ])
+    expect(filterCalendar(all, TODAY, { showCompleted: false })).toHaveLength(4)
+  })
+  it('sort ties: due asc, then priority desc', () => {
+    const a = makeTask({ id: 'a', startDate: '2026-11-20', dueDate: '2026-11-25' })
+    const b = makeTask({ id: 'b', startDate: '2026-11-20', dueDate: '2026-11-22' })
+    const c = makeTask({ id: 'c', startDate: '2026-11-20', dueDate: '2026-11-22', priority: 4 })
+    expect(filterCalendar([a, b, c], TODAY).map((t) => t.id)).toEqual(['c', 'b', 'a'])
+  })
+  it('tasksInRange intersects display spans', () => {
     expect(
-      tasksInRange([future, onlyStart, overdue], '2026-12-05', '2026-12-31').map((t) => t.id),
+      tasksInRange([future, onlyStart, overdue], TODAY, '2026-12-05', '2026-12-31').map(
+        (t) => t.id,
+      ),
     ).toEqual(['future'])
-    expect(tasksInRange([future], '2026-11-01', '2026-12-01')).toHaveLength(1)
+    expect(tasksInRange([future], TODAY, '2026-11-01', '2026-12-01')).toHaveLength(1)
+    // done is drawn where it ran (11-08..11-11), not on its planned 11-10 alone.
+    expect(tasksInRange([done], TODAY, '2026-11-08', '2026-11-08')).toHaveLength(1)
+    expect(tasksInRange([done], TODAY, '2026-11-12', '2026-11-30')).toHaveLength(0)
+    // in progress reaches today.
+    expect(tasksInRange([working], TODAY, TODAY, TODAY)).toHaveLength(1)
+    expect(tasksInRange([working, undated], TODAY, '2026-11-14', '2026-11-30')).toHaveLength(0)
   })
   it('timelineRange: 1 week back, at least 6 weeks forward, extends to latest date', () => {
     expect(timelineRange([], TODAY)).toEqual({ start: '2026-11-06', end: '2026-12-25' })
     const far = makeTask({ dueDate: '2027-03-01' })
+    // An old planned (not started) task does not stretch the chart back.
     expect(timelineRange([far, overdue], TODAY)).toEqual({ start: '2026-11-06', end: '2027-03-01' })
+  })
+  it('timelineRange: reaches back to the earliest actual start, never later than today − 7', () => {
+    expect(timelineRange([working], TODAY).start).toBe('2026-11-02')
+    expect(timelineRange([working, done], TODAY).start).toBe('2026-11-02')
+    // A start inside the default week does not pull the start forward.
+    const recent = makeTask({ status: 'blocked', startedAt: localMs(2026, 11, 12) })
+    expect(timelineRange([recent], TODAY).start).toBe('2026-11-06')
+    // Done history counts too (the view only passes it when Completed is on).
+    const oldDone = makeTask({
+      status: 'done',
+      startedAt: localMs(2026, 9, 1),
+      completedAt: localMs(2026, 9, 2),
+    })
+    expect(timelineRange([oldDone], TODAY).start).toBe('2026-09-01')
+  })
+  it('timelineRange: look-back capped at TIMELINE_MAX_LOOKBACK_DAYS (365)', () => {
+    const ancient = makeTask({ status: 'in_progress', startedAt: localMs(2020, 1, 1) })
+    expect(timelineRange([ancient], TODAY).start).toBe('2025-11-13')
+    const justInside = makeTask({ status: 'in_progress', startedAt: localMs(2025, 11, 14) })
+    expect(timelineRange([justInside], TODAY).start).toBe('2025-11-14')
+  })
+  it('timelineRange: end follows the latest display-span end', () => {
+    const dueLater = makeTask({
+      status: 'in_progress',
+      startedAt: localMs(2026, 11, 1),
+      dueDate: '2027-02-01',
+    })
+    expect(timelineRange([dueLater], TODAY).end).toBe('2027-02-01')
+  })
+})
+
+describe('displaySpan', () => {
+  it('not_started: the plan (taskSpan), null when undated', () => {
+    expect(displaySpan(makeTask(), TODAY)).toBeNull()
+    expect(displaySpan(makeTask({ dueDate: '2026-11-20' }), TODAY)).toEqual({
+      start: '2026-11-20',
+      end: '2026-11-20',
+      source: 'planned',
+      ongoing: false,
+    })
+    expect(
+      displaySpan(makeTask({ startDate: '2026-11-18', dueDate: '2026-11-25' }), TODAY),
+    ).toEqual({ start: '2026-11-18', end: '2026-11-25', source: 'planned', ongoing: false })
+  })
+  it('in_progress: started day → today, even when undated', () => {
+    const t = makeTask({ status: 'in_progress', startedAt: localMs(2026, 11, 3, 9) })
+    expect(displaySpan(t, TODAY)).toEqual({
+      start: '2026-11-03',
+      end: TODAY,
+      source: 'actual',
+      ongoing: true,
+    })
+  })
+  it('in_progress: the planned startDate is superseded by the actual start', () => {
+    const t = makeTask({
+      status: 'in_progress',
+      startDate: '2026-11-10',
+      startedAt: localMs(2026, 11, 3),
+    })
+    expect(displaySpan(t, TODAY)?.start).toBe('2026-11-03')
+  })
+  it('due in the future extends the end; due in the past stops at today', () => {
+    const base = { status: 'in_progress' as const, startedAt: localMs(2026, 11, 3) }
+    expect(displaySpan(makeTask({ ...base, dueDate: '2026-11-25' }), TODAY)?.end).toBe('2026-11-25')
+    expect(displaySpan(makeTask({ ...base, dueDate: '2026-11-05' }), TODAY)?.end).toBe(TODAY)
+    expect(displaySpan(makeTask({ ...base, dueDate: TODAY }), TODAY)?.end).toBe(TODAY)
+  })
+  it('blocked: same geometry as in progress', () => {
+    const t = makeTask({
+      status: 'blocked',
+      startedAt: localMs(2026, 11, 3),
+      dueDate: '2026-12-01',
+    })
+    expect(displaySpan(t, TODAY)).toEqual({
+      start: '2026-11-03',
+      end: '2026-12-01',
+      source: 'actual',
+      ongoing: true,
+    })
+  })
+  it('done: started day → completed day, ignoring the plan', () => {
+    const t = makeTask({
+      status: 'done',
+      startDate: '2026-12-01',
+      dueDate: '2026-12-05',
+      startedAt: localMs(2026, 11, 3, 9),
+      completedAt: localMs(2026, 11, 12, 18),
+    })
+    expect(displaySpan(t, TODAY)).toEqual({
+      start: '2026-11-03',
+      end: '2026-11-12',
+      source: 'actual',
+      ongoing: false,
+    })
+  })
+  it('done with start == completed is a one-day span', () => {
+    const at = localMs(2026, 11, 12, 23, 59)
+    const t = makeTask({ status: 'done', startedAt: at, completedAt: at })
+    expect(displaySpan(t, TODAY)).toMatchObject({ start: '2026-11-12', end: '2026-11-12' })
+  })
+  it('local dates: a late-evening start is that local day (TZ America/New_York)', () => {
+    const t = makeTask({ status: 'in_progress', startedAt: localMs(2026, 11, 3, 23, 30) })
+    expect(displaySpan(t, TODAY)?.start).toBe('2026-11-03')
+  })
+  it('legacy started rows without startedAt still get a span', () => {
+    const createdAt = localMs(2026, 11, 1)
+    for (const status of ['in_progress', 'blocked'] as const) {
+      expect(displaySpan(makeTask({ status, startedAt: null, createdAt }), TODAY)).toEqual({
+        start: '2026-11-01',
+        end: TODAY,
+        source: 'actual',
+        ongoing: true,
+      })
+    }
+    expect(
+      displaySpan(
+        makeTask({ status: 'done', startedAt: null, completedAt: localMs(2026, 11, 9) }),
+        TODAY,
+      ),
+    ).toEqual({ start: '2026-11-09', end: '2026-11-09', source: 'actual', ongoing: false })
+    // Done without even a completedAt falls back to updatedAt.
+    expect(
+      displaySpan(
+        makeTask({
+          status: 'done',
+          startedAt: null,
+          completedAt: null,
+          updatedAt: localMs(2026, 11, 7),
+        }),
+        TODAY,
+      ),
+    ).toMatchObject({ start: '2026-11-07', end: '2026-11-07' })
+  })
+  it('clamps end >= start (start in the future after a clock / time-zone change)', () => {
+    const t = makeTask({ status: 'in_progress', startedAt: localMs(2026, 11, 20) })
+    expect(displaySpan(t, TODAY)).toMatchObject({ start: '2026-11-20', end: '2026-11-20' })
+    const d = makeTask({
+      status: 'done',
+      startedAt: localMs(2026, 11, 12),
+      completedAt: localMs(2026, 11, 10),
+    })
+    const span = displaySpan(d, TODAY)
+    expect(span?.end !== undefined && span.start <= span.end).toBe(true)
+  })
+  it('startedOn: local date of the effective start, null when not started', () => {
+    expect(startedOn(makeTask())).toBeNull()
+    expect(startedOn(makeTask({ status: 'blocked', startedAt: localMs(2026, 11, 3, 0, 5) }))).toBe(
+      '2026-11-03',
+    )
+    expect(startedOn(makeTask({ status: 'in_progress', createdAt: localMs(2026, 10, 30) }))).toBe(
+      '2026-10-30',
+    )
+  })
+})
+
+describe('describeProgress', () => {
+  const NOW = localMs(2026, 11, 13, 15)
+  it('not started: no lines (callers keep their plan wording)', () => {
+    expect(describeProgress(makeTask({ dueDate: '2026-11-20' }), TODAY, NOW)).toEqual([])
+  })
+  it('in progress, with due / overdue / due-today / undated', () => {
+    const base = { status: 'in_progress' as const, startedAt: localMs(2026, 11, 3, 9) }
+    expect(describeProgress(makeTask(base), TODAY, NOW)).toEqual([
+      'Started Nov 3 · in progress 10 days',
+    ])
+    expect(describeProgress(makeTask({ ...base, dueDate: '2026-11-25' }), TODAY, NOW)).toEqual([
+      'Started Nov 3 · in progress 10 days',
+      'Due Nov 25',
+    ])
+    expect(describeProgress(makeTask({ ...base, dueDate: '2026-11-10' }), TODAY, NOW)).toEqual([
+      'Started Nov 3 · in progress 10 days',
+      'Overdue · was due Nov 10',
+    ])
+    expect(describeProgress(makeTask({ ...base, dueDate: TODAY }), TODAY, NOW)).toEqual([
+      'Started Nov 3 · in progress 10 days',
+      'Due today',
+    ])
+  })
+  it('in progress for a few hours', () => {
+    const t = makeTask({ status: 'in_progress', startedAt: localMs(2026, 11, 13, 11, 40) })
+    expect(describeProgress(t, TODAY, NOW)).toEqual(['Started Nov 13 · in progress 3 h 20 min'])
+  })
+  it('blocked', () => {
+    const t = makeTask({
+      status: 'blocked',
+      startedAt: localMs(2026, 11, 3, 9),
+      dueDate: '2026-11-25',
+    })
+    expect(describeProgress(t, TODAY, NOW)).toEqual([
+      'Blocked · started Nov 3 · 10 days',
+      'Due Nov 25',
+    ])
+  })
+  it('done across days, same day, and zero length', () => {
+    expect(
+      describeProgress(
+        makeTask({
+          status: 'done',
+          startedAt: localMs(2026, 11, 3, 9),
+          completedAt: localMs(2026, 11, 12, 9),
+        }),
+        TODAY,
+        NOW,
+      ),
+    ).toEqual(['Nov 3 – Nov 12 · took 9 days'])
+    expect(
+      describeProgress(
+        makeTask({
+          status: 'done',
+          startedAt: localMs(2026, 11, 12, 9),
+          completedAt: localMs(2026, 11, 12, 12, 20),
+        }),
+        TODAY,
+        NOW,
+      ),
+    ).toEqual(['Nov 12 · took 3 h 20 min'])
+    const at = localMs(2026, 11, 12, 9)
+    expect(
+      describeProgress(makeTask({ status: 'done', startedAt: at, completedAt: at }), TODAY, NOW),
+    ).toEqual(['Completed Nov 12'])
+  })
+  it('years outside the current one are spelled out', () => {
+    const t = makeTask({
+      status: 'done',
+      startedAt: localMs(2025, 12, 30),
+      completedAt: localMs(2026, 1, 2),
+    })
+    expect(describeProgress(t, TODAY, NOW)).toEqual(['Dec 30, 2025 – Jan 2 · took 3 days'])
+  })
+  it('legacy rows use the effective start', () => {
+    const t = makeTask({
+      status: 'in_progress',
+      startedAt: null,
+      createdAt: localMs(2026, 11, 3, 15),
+    })
+    expect(describeProgress(t, TODAY, NOW)).toEqual(['Started Nov 3 · in progress 10 days'])
+    const d = makeTask({ status: 'done', startedAt: null, completedAt: localMs(2026, 11, 12) })
+    expect(describeProgress(d, TODAY, NOW)).toEqual(['Completed Nov 12'])
   })
 })
 

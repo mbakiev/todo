@@ -1,9 +1,10 @@
-// Calendar view e2e: navigation, drag to reschedule, click-to-create, "+N more", screenshots.
+// Calendar view e2e: navigation, drag to reschedule, click-to-create, "+N more", started /
+// done tasks drawn from their record (display span), screenshots.
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { expect, test, type Page } from '@playwright/test'
-import { addMonths, startOfMonth, todayLocal } from '../src/shared/dates'
-import type { Api, CreateTaskInput } from '../src/shared/ipc'
+import { expect, test, type Locator, type Page } from '@playwright/test'
+import { addDays, addMonths, startOfMonth, todayLocal } from '../src/shared/dates'
+import type { Api, CreateTaskInput, UpdateTaskPatch } from '../src/shared/ipc'
 import type { Task } from '../src/shared/types'
 import { launchApp, resizeMainWindow, type LaunchedApp } from './launch'
 
@@ -36,7 +37,33 @@ const createTasks = (page: Page, inputs: CreateTaskInput[]): Promise<unknown> =>
     for (const input of list) await api.tasks.create(input)
   }, inputs)
 
+const createTask = (page: Page, input: CreateTaskInput): Promise<Task> =>
+  page.evaluate((i) => (globalThis as unknown as { api: Api }).api.tasks.create(i), input)
+
+const updateTask = (page: Page, id: string, patch: UpdateTaskPatch): Promise<Task> =>
+  page.evaluate(
+    ([taskId, p]) => (globalThis as unknown as { api: Api }).api.tasks.update(taskId, p),
+    [id, patch] as const,
+  )
+
 const cell = (page: Page, date: string) => page.locator(`[data-date="${date}"]`)
+
+/** Grid items (not popover rows) for a task id. */
+const gridItem = (page: Page, id: string) =>
+  page.getByTestId('calendar-grid').locator(`[data-task-id="${id}"]`)
+
+/** True when the element's left edge sits inside the given day's column. */
+async function startsInColumn(page: Page, el: Locator, date: string): Promise<boolean> {
+  const box = await el.boundingBox()
+  const col = await cell(page, date).boundingBox()
+  return !!box && !!col && box.x >= col.x && box.x < col.x + col.width
+}
+
+/** A date in the current month a few days away from today (so its cell is in the grid). */
+const nearbyDay = (): string => {
+  const today = todayLocal()
+  return Number(today.slice(8)) <= 20 ? addDays(today, 3) : addDays(today, -3)
+}
 
 async function drag(page: Page, from: { x: number; y: number }, to: { x: number; y: number }) {
   await page.mouse.move(from.x, from.y)
@@ -163,12 +190,187 @@ test('"+N more" opens a popover listing the day\'s tasks; click opens detail', a
     .toBeGreaterThan(before)
 })
 
-test('hides completed tasks with the toggle', async () => {
+test('done tasks show on the day they were completed; the toggle hides and shows them', async () => {
   const page = await openCalendar(false)
-  await createTasks(page, [{ title: 'Finished thing', dueDate: day(12), status: 'done' }])
-  await expect(page.locator('[data-task-id]', { hasText: 'Finished thing' })).toBeVisible()
+  const today = todayLocal()
+  const planned = nearbyDay()
+  // Planned for another day, completed now: drawn on today (the record), not on the plan.
+  const done = await createTask(page, { title: 'Finished thing', dueDate: planned, status: 'done' })
+  const item = gridItem(page, done.id)
+  await expect(item).toBeVisible()
+  await expect(item).toHaveAttribute('data-status', 'done')
+  await expect(item).toHaveAttribute('data-source', 'actual')
+  await expect(item).toHaveAttribute('data-ongoing', 'false')
+  await expect(item).toHaveAttribute('data-kind', 'chip')
+  expect(await startsInColumn(page, item, today)).toBe(true)
+  expect(await startsInColumn(page, item, planned)).toBe(false)
+  await expect(item).toHaveAttribute('title', /^Finished thing — Completed /)
+
   await page.getByRole('button', { name: 'Show completed' }).click()
-  await expect(page.locator('[data-task-id]', { hasText: 'Finished thing' })).toHaveCount(0)
+  await expect(item).toHaveCount(0)
+  await page.getByRole('button', { name: 'Show completed' }).click()
+  await expect(item).toBeVisible()
+  expect(await startsInColumn(page, item, today)).toBe(true)
+})
+
+test('an undated task set to In Progress appears on today; blocked shows the marker', async () => {
+  const page = await openCalendar(false)
+  const today = todayLocal()
+  const task = await createTask(page, { title: 'Undated work' })
+  // Undated and not started: not on the calendar at all.
+  await expect(page.locator(`[data-task-id="${task.id}"]`)).toHaveCount(0)
+
+  await updateTask(page, task.id, { status: 'in_progress' })
+  const item = gridItem(page, task.id)
+  await expect(item).toBeVisible()
+  await expect(item).toHaveAttribute('data-status', 'in_progress')
+  await expect(item).toHaveAttribute('data-source', 'actual')
+  await expect(item).toHaveAttribute('data-ongoing', 'true')
+  await expect(item).toHaveAttribute('data-kind', 'chip')
+  await expect(item).toHaveAttribute('aria-label', 'Undated work')
+  await expect(item).toHaveAttribute('title', /^Undated work — Started .* · in progress /)
+  expect(await startsInColumn(page, item, today)).toBe(true)
+  await expect(item.locator('[data-blocked-marker]')).toHaveCount(0)
+
+  await updateTask(page, task.id, { status: 'blocked' })
+  await expect(item).toHaveAttribute('data-status', 'blocked')
+  await expect(item.locator('[data-blocked-marker]')).toBeVisible()
+  await expect(item).toHaveAttribute('title', /^Undated work — Blocked · started /)
+  expect(await startsInColumn(page, item, today)).toBe(true)
+
+  // Back to Not Started: undated again, so it leaves the calendar.
+  await updateTask(page, task.id, { status: 'not_started' })
+  await expect(page.locator(`[data-task-id="${task.id}"]`)).toHaveCount(0)
+})
+
+test('only not-started items drag; an in-progress item stays put', async () => {
+  const page = await openCalendar(false)
+  const today = todayLocal()
+  const target = nearbyDay()
+  const planned = await createTask(page, { title: 'Planned chip', dueDate: today })
+  const running = await createTask(page, { title: 'Running chip', status: 'in_progress' })
+  const plannedItem = gridItem(page, planned.id)
+  const runningItem = gridItem(page, running.id)
+  await expect(plannedItem).toBeVisible()
+  await expect(runningItem).toBeVisible()
+  // dnd-kit's drag affordance only on the draggable one.
+  await expect(plannedItem).toHaveAttribute('aria-roledescription', 'draggable')
+  await expect(runningItem).not.toHaveAttribute('aria-roledescription')
+
+  const drop = await cell(page, target).boundingBox()
+  if (!drop) throw new Error('missing drop cell')
+  const to = { x: drop.x + drop.width / 2, y: drop.y + drop.height - 12 }
+
+  // The in-progress item: nothing moves, nothing is written.
+  const runBox = await runningItem.boundingBox()
+  if (!runBox) throw new Error('missing running box')
+  await drag(page, { x: runBox.x + 20, y: runBox.y + runBox.height / 2 }, to)
+  await expect(cell(page, target)).not.toHaveClass(/bg-selection/)
+  await page.waitForTimeout(300)
+  expect((await listTasks(page)).find((t) => t.id === running.id)).toMatchObject({
+    status: 'in_progress',
+    startDate: null,
+    dueDate: null,
+  })
+  expect(await startsInColumn(page, runningItem, today)).toBe(true)
+  await page.keyboard.press('Escape')
+
+  // A click on the in-progress item still opens the detail panel. (Checked before the real
+  // drag below: dnd-kit swallows every click for 50 ms after a drop, which an immediate
+  // Playwright click would hit.)
+  await runningItem.click()
+  await expect(page.getByTestId('task-detail')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('task-detail')).toHaveCount(0)
+
+  // The planned item moves its due date.
+  const planBox = await plannedItem.boundingBox()
+  if (!planBox) throw new Error('missing planned box')
+  await drag(page, { x: planBox.x + 20, y: planBox.y + planBox.height / 2 }, to)
+  await expect
+    .poll(async () => (await listTasks(page)).find((t) => t.id === planned.id)?.dueDate)
+    .toBe(target)
+  await expect.poll(() => startsInColumn(page, plannedItem, target)).toBe(true)
+})
+
+test('seeded started and done tasks are drawn from their record', async () => {
+  const page = await openCalendar(true)
+  const today = todayLocal()
+  const tasks = await listTasks(page)
+  const byTitle = (title: string): Task => {
+    const t = tasks.find((x) => x.title === title)
+    if (!t) throw new Error(`seed task missing: ${title}`)
+    return t
+  }
+  // Undated, in progress since ~3 days ago; blocked since ~10 days ago (both ongoing to today).
+  for (const title of [
+    'Draft blog post on the migration',
+    'Ask IT about VPN access for contractors',
+  ]) {
+    const t = byTitle(title)
+    expect(t.startDate).toBeNull()
+    expect(t.dueDate).toBeNull()
+    // A busy seeded day may push it behind "+N more"; either way it is on today.
+    const items = gridItem(page, t.id)
+    if ((await items.count()) > 0) {
+      const last = items.last()
+      await expect(last).toHaveAttribute('data-source', 'actual')
+      await expect(last).toHaveAttribute('data-ongoing', 'true')
+      await expect(last).toHaveAttribute('data-kind', 'bar')
+      if (t.status === 'blocked') await expect(last.locator('[data-blocked-marker]')).toBeVisible()
+    } else {
+      await page.locator(`[data-more="${today}"]`).click()
+      const pop = page.getByTestId('calendar-more-popover')
+      const row = pop.locator(`[data-task-id="${t.id}"]`)
+      await expect(row).toHaveAttribute('data-source', 'actual')
+      await expect(row).toHaveAttribute('data-ongoing', 'true')
+      if (t.status === 'blocked') await expect(row.locator('[data-blocked-marker]')).toBeVisible()
+      await page.keyboard.press('Escape')
+      await expect(pop).toHaveCount(0)
+    }
+  }
+
+  // Blocked since Nov-ish with a due date ~60 days out: the hatch (elapsed part) stops at
+  // today; the planned remainder after today is lighter and never hatched.
+  const kitchen = byTitle('Kitchen renovation quotes')
+  expect(kitchen.status).toBe('blocked')
+  const todayRow = page.locator('[data-week]').filter({ has: cell(page, today) })
+  const rowDates = await todayRow
+    .locator('[data-date]')
+    .evaluateAll((els) => els.map((e) => e.getAttribute('data-date') ?? ''))
+  const pieces = todayRow.locator(`[data-task-id="${kitchen.id}"]`)
+  const current = pieces.filter({ has: page.locator('[data-bar-hatch]') }).last()
+  await expect(current).toHaveAttribute('data-ongoing', 'true')
+  const elapsedCols = Number(await current.getAttribute('data-elapsed-cols'))
+  expect(elapsedCols).toBeGreaterThan(0)
+  const hatchBox = await current.locator('[data-bar-hatch]').boundingBox()
+  const todayBox = await cell(page, today).boundingBox()
+  if (!hatchBox || !todayBox) throw new Error('missing boxes')
+  // Item insets are a few px; the hatch ends at today's column, not at the bar's end.
+  expect(Math.abs(hatchBox.x + hatchBox.width - (todayBox.x + todayBox.width))).toBeLessThan(10)
+  if (rowDates[rowDates.length - 1] !== today) {
+    await expect(current.locator('[data-bar-remainder]')).toBeVisible()
+  }
+
+  // Next month: every week row entirely after today shows only remainder.
+  await page.getByRole('button', { name: 'Next month' }).click()
+  const futureRows = page.locator('[data-week]')
+  const weekStarts = await futureRows.evaluateAll((els) =>
+    els.map((e) => e.getAttribute('data-week') ?? ''),
+  )
+  let checked = 0
+  for (const w of weekStarts.filter((x) => x > today)) {
+    const future = page.locator(`[data-week="${w}"] [data-task-id="${kitchen.id}"]`)
+    if ((await future.count()) === 0) continue
+    for (const el of await future.all()) {
+      await expect(el).toHaveAttribute('data-elapsed-cols', '0')
+      await expect(el.locator('[data-bar-hatch]')).toHaveCount(0)
+      await expect(el.locator('[data-bar-remainder]')).toBeVisible()
+      await expect(el.locator('[data-blocked-marker]')).toBeVisible()
+    }
+    checked++
+  }
+  expect(checked).toBeGreaterThan(0)
 })
 
 test('screenshots (light + dark)', async () => {
