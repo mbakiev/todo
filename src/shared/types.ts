@@ -21,6 +21,13 @@ export interface Task {
   /** Epoch ms. */
   createdAt: number
   updatedAt: number
+  /**
+   * Epoch ms the task actually left Not Started (the record, not the plan). Maintained
+   * automatically via `statusTimestamps` in shared/lifecycle.ts; null while not started.
+   * Legacy rows may lack it in a started status — read it through `effectiveStartedAt`.
+   */
+  startedAt: number | null
+  /** Epoch ms the task reached Done; null while open. */
   completedAt: number | null
 }
 

@@ -35,6 +35,7 @@ function task(over: Partial<Task> & { id: string }): Task {
     tagIds: [],
     createdAt: 100,
     updatedAt: 100,
+    startedAt: null,
     completedAt: null,
     ...over,
   }
@@ -76,6 +77,13 @@ describe('parseExportFile', () => {
     expect(() => parseExportFile(JSON.stringify({ ...file([]), formatVersion: 2 }))).toThrow(
       /newer version.*format 2/,
     )
+  })
+  it('reads files exported before start tracking (no startedAt) as startedAt: null', () => {
+    const legacy = file([task({ id: 'old' })]) as { tasks: Partial<Task>[] }
+    delete legacy.tasks[0]?.startedAt
+    const text = JSON.stringify(legacy)
+    expect(text).not.toContain('startedAt')
+    expect(parseExportFile(text).tasks[0]?.startedAt).toBeNull()
   })
   it('rejects duplicate ids', () => {
     expect(() =>
@@ -124,6 +132,41 @@ describe('applyImport — merge', () => {
     )
     expect(res2).toMatchObject({ tasksUpdated: 1 })
     expect(r.tasks.get(local.id)).toMatchObject({ title: 'newer', status: 'done', completedAt: 5 })
+  })
+
+  it('normalises startedAt on import (spec §4 invariants)', () => {
+    const legacy = (over: Partial<Task> & { id: string }) => {
+      const t: Partial<Task> = task({ createdAt: 100, updatedAt: 900, ...over })
+      if (!('startedAt' in over)) delete t.startedAt
+      return t
+    }
+    const text = JSON.stringify(
+      file([
+        // Missing in every status (older export files).
+        legacy({ id: 'ns' }) as Task,
+        legacy({ id: 'ip', status: 'in_progress' }) as Task,
+        legacy({ id: 'bl', status: 'blocked' }) as Task,
+        legacy({ id: 'dn', status: 'done', completedAt: 500 }) as Task,
+        legacy({ id: 'dn-nc', status: 'done', completedAt: null }) as Task,
+        // Present but inconsistent.
+        task({ id: 'ns-set', startedAt: 300 }),
+        task({ id: 'dn-late', status: 'done', startedAt: 800, completedAt: 500 }),
+        task({ id: 'dn-ok', status: 'done', startedAt: 200, completedAt: 500 }),
+        task({ id: 'ip-ok', status: 'in_progress', startedAt: 250 }),
+      ]),
+    )
+    applyImport(r, parseExportFile(text), 'merge')
+    const started = (id: string) => r.tasks.get(id)?.startedAt
+    expect(started('ns')).toBeNull()
+    expect(started('ip')).toBe(100) // createdAt
+    expect(started('bl')).toBe(100)
+    expect(started('dn')).toBe(500) // completedAt: zero length
+    expect(started('dn-nc')).toBe(900) // completedAt ?? updatedAt
+    expect(r.tasks.get('dn-nc')?.completedAt).toBe(900)
+    expect(started('ns-set')).toBeNull()
+    expect(started('dn-late')).toBe(500) // clamped <= completedAt
+    expect(started('dn-ok')).toBe(200)
+    expect(started('ip-ok')).toBe(250)
   })
 
   it('revives a locally soft-deleted task only when the file copy is newer', () => {
@@ -274,8 +317,11 @@ describe('applyImport — replace', () => {
       dueDate: '2026-11-05',
     }).task
     clock += 5
+    r.tasks.update(t.id, { status: 'in_progress' })
+    clock += 5
     r.tasks.update(t.id, { status: 'done' })
     const exported = buildExport(r)
+    expect(exported.tasks[0]).toMatchObject({ startedAt: 1_000_005, completedAt: 1_000_010 })
     r.db.exec('DELETE FROM task_tags; DELETE FROM tasks; DELETE FROM tags;')
     applyImport(r, parseExportFile(JSON.stringify(exported)), 'replace')
     expect(buildExport(r, exported.exportedAt)).toEqual(exported)

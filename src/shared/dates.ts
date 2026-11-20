@@ -195,3 +195,34 @@ export function weekdayShort(dow: number): string {
 export function monthShort(month0: number): string {
   return MONTHS_SHORT[((month0 % 12) + 12) % 12] ?? ''
 }
+
+const MINUTE_MS = 60_000
+const HOUR_MS = 60 * MINUTE_MS
+const DAY_MS = 24 * HOUR_MS
+
+/**
+ * Compact elapsed time between two instants (epoch-ms difference), for "took …" / "in
+ * progress …" wording. Units are truncated so a value never rounds up past what has elapsed:
+ * - under 1 min: "under a minute" (negative values count as 0)
+ * - under 1 h:   "N min"
+ * - under 24 h:  "N h" / "N h M min"
+ * - under 7 days: "1 day" / "1 day 4 h" / "3 days 2 h"
+ * - 7 days or more: whole days, rounded to the nearest: "9 days"
+ */
+export function formatElapsed(ms: number): string {
+  const v = Number.isFinite(ms) ? Math.max(0, ms) : 0
+  if (v < MINUTE_MS) return 'under a minute'
+  if (v < HOUR_MS) return `${Math.floor(v / MINUTE_MS)} min`
+  if (v < DAY_MS) {
+    const h = Math.floor(v / HOUR_MS)
+    const m = Math.floor((v - h * HOUR_MS) / MINUTE_MS)
+    return m === 0 ? `${h} h` : `${h} h ${m} min`
+  }
+  const dayWord = (n: number): string => `${n} ${n === 1 ? 'day' : 'days'}`
+  if (v < 7 * DAY_MS) {
+    const d = Math.floor(v / DAY_MS)
+    const h = Math.floor((v - d * DAY_MS) / HOUR_MS)
+    return h === 0 ? dayWord(d) : `${dayWord(d)} ${h} h`
+  }
+  return dayWord(Math.round(v / DAY_MS))
+}

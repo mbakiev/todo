@@ -148,5 +148,8 @@ export const MAX_TAG_NAME_LENGTH = 50
 export const BACKUP_KEEP = { auto: 14, manual: 10, preimport: 5 } as const
 export const BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000
 
+/** How far back (days) the Timeline range may reach to show where started work began. */
+export const TIMELINE_MAX_LOOKBACK_DAYS = 365
+
 /** Debounce for title/description autosave in the detail panel. */
 export const AUTOSAVE_DEBOUNCE_MS = 500

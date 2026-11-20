@@ -5,6 +5,8 @@ import { defaultSettings, POSITION_EPSILON, SOFT_DELETE_RETENTION_MS } from '@sh
 import { openDb } from './connection'
 import { openDatabase, type Repos } from './index'
 import { migrate } from './migrate'
+import { MIGRATIONS } from './migrations'
+import { seedDemoData } from './seed'
 
 let clock = 1_000_000
 const now = () => clock
@@ -18,8 +20,45 @@ afterEach(() => r.db.close())
 
 describe('migrations', () => {
   it('sets user_version and is idempotent', () => {
-    expect(r.db.pragma<number>('user_version')).toBe(1)
-    expect(migrate(r.db)).toBe(1)
+    expect(r.db.pragma<number>('user_version')).toBe(2)
+    expect(migrate(r.db)).toBe(2)
+  })
+  it('002 adds started_at and backfills a schema-v1 database by status', () => {
+    const db = openDb({ path: ':memory:' })
+    try {
+      expect(migrate(db, MIGRATIONS.slice(0, 1))).toBe(1)
+      const insert = (
+        id: string,
+        status: string,
+        createdAt: number,
+        updatedAt: number,
+        completedAt: number | null,
+      ) =>
+        db.run(
+          `INSERT INTO tasks (id, title, status, position, created_at, updated_at, completed_at)
+           VALUES (?, ?, ?, 0, ?, ?, ?)`,
+          [id, id, status, createdAt, updatedAt, completedAt],
+        )
+      insert('ns', 'not_started', 100, 150, null)
+      insert('ip', 'in_progress', 200, 250, null)
+      insert('bl', 'blocked', 300, 350, null)
+      insert('dn', 'done', 400, 500, 450)
+      insert('dn-legacy', 'done', 600, 700, null) // done without completed_at
+      expect(migrate(db)).toBe(2)
+      const rows = db.all<{ id: string; started_at: number | null; completed_at: number | null }>(
+        'SELECT id, started_at, completed_at FROM tasks ORDER BY id',
+      )
+      expect(Object.fromEntries(rows.map((x) => [x.id, x.started_at]))).toEqual({
+        ns: null,
+        ip: 200,
+        bl: 300,
+        dn: 450,
+        'dn-legacy': 700,
+      })
+      expect(rows.find((x) => x.id === 'dn')?.completed_at).toBe(450) // untouched
+    } finally {
+      db.close()
+    }
   })
   it('rolls back a failing migration', () => {
     const db = openDb({ path: ':memory:' })
@@ -72,6 +111,7 @@ describe('tasksRepo.create', () => {
       tagIds: [],
       createdAt: clock,
       updatedAt: clock,
+      startedAt: null,
       completedAt: null,
     })
   })
@@ -85,6 +125,13 @@ describe('tasksRepo.create', () => {
   })
   it('sets completedAt when created done', () => {
     expect(r.tasks.create({ title: 'x', status: 'done' }).task.completedAt).toBe(clock)
+  })
+  it('records startedAt when created already started; done gets identical timestamps', () => {
+    expect(r.tasks.create({ title: 'a', status: 'in_progress' }).task.startedAt).toBe(clock)
+    expect(r.tasks.create({ title: 'b', status: 'blocked' }).task.startedAt).toBe(clock)
+    const done = r.tasks.create({ title: 'c', status: 'done' }).task
+    expect(done.startedAt).toBe(clock)
+    expect(done.completedAt).toBe(clock)
   })
   it('validates dates', () => {
     expect(() =>
@@ -136,6 +183,58 @@ describe('tasksRepo.update', () => {
     clock += 10
     const reopened = r.tasks.update(task.id, { status: 'in_progress' })
     expect(reopened.completedAt).toBeNull()
+  })
+  it('maintains startedAt across every transition', () => {
+    const { task } = r.tasks.create({ title: 'x' })
+    expect(task.startedAt).toBeNull()
+    clock += 10
+    const started = r.tasks.update(task.id, { status: 'in_progress' })
+    const startedAt = clock
+    expect(started).toMatchObject({ startedAt, completedAt: null })
+    clock += 10
+    expect(r.tasks.update(task.id, { status: 'blocked' })).toMatchObject({
+      startedAt,
+      completedAt: null,
+    })
+    clock += 10
+    expect(r.tasks.update(task.id, { status: 'in_progress' })).toMatchObject({
+      startedAt,
+      completedAt: null,
+    })
+    clock += 10
+    expect(r.tasks.update(task.id, { title: 'renamed' }).startedAt).toBe(startedAt)
+    clock += 10
+    const done = r.tasks.update(task.id, { status: 'done' })
+    expect(done).toMatchObject({ startedAt, completedAt: clock })
+    clock += 10
+    // Reopen keeps the original start.
+    expect(r.tasks.update(task.id, { status: 'blocked' })).toMatchObject({
+      startedAt,
+      completedAt: null,
+    })
+    clock += 10
+    // Back to Not Started clears both; a later start records a fresh time.
+    expect(r.tasks.update(task.id, { status: 'not_started' })).toMatchObject({
+      startedAt: null,
+      completedAt: null,
+    })
+    clock += 10
+    expect(r.tasks.update(task.id, { status: 'in_progress' }).startedAt).toBe(clock)
+  })
+  it('Not Started → Done records identical start and completion', () => {
+    const { task } = r.tasks.create({ title: 'x' })
+    clock += 1000
+    const done = r.tasks.update(task.id, { status: 'done' })
+    expect(done.startedAt).toBe(clock)
+    expect(done.completedAt).toBe(clock)
+    expect(done.updatedAt).toBe(clock)
+  })
+  it('does not touch startedAt for non-status edits', () => {
+    const { task } = r.tasks.create({ title: 'x', status: 'in_progress' })
+    clock += 50
+    const edited = r.tasks.update(task.id, { title: 'y', priority: 4, dueDate: '2026-12-01' })
+    expect(edited.startedAt).toBe(task.startedAt)
+    expect(edited.updatedAt).toBe(clock)
   })
   it('moves to the top of the new column on status change', () => {
     const a = r.tasks.create({ title: 'a', status: 'blocked' }).task
@@ -234,6 +333,30 @@ describe('tasksRepo.move', () => {
     expect(
       r.tasks.move(a, { status: 'blocked', beforeId: null, afterId: null }).task.completedAt,
     ).toBeNull()
+  })
+  it('maintains startedAt when moving across columns', () => {
+    const [a] = column(1) as [string]
+    expect(r.tasks.get(a)?.startedAt).toBeNull()
+    clock += 5
+    const startedAt = clock
+    const mv = (status: 'not_started' | 'in_progress' | 'blocked' | 'done') =>
+      r.tasks.move(a, { status, beforeId: null, afterId: null }).task
+    expect(mv('in_progress')).toMatchObject({ startedAt, completedAt: null })
+    clock += 5
+    expect(mv('blocked')).toMatchObject({ startedAt, completedAt: null })
+    clock += 5
+    // Reorder within the column changes nothing.
+    expect(r.tasks.move(a, { beforeId: null, afterId: null }).task.startedAt).toBe(startedAt)
+    clock += 5
+    expect(mv('done')).toMatchObject({ startedAt, completedAt: clock })
+    clock += 5
+    expect(mv('in_progress')).toMatchObject({ startedAt, completedAt: null })
+    clock += 5
+    expect(mv('not_started')).toMatchObject({ startedAt: null, completedAt: null })
+    clock += 5
+    const done = mv('done')
+    expect(done.startedAt).toBe(clock)
+    expect(done.completedAt).toBe(clock)
   })
   it('rejects neighbours from another column or itself', () => {
     const [a] = column(1) as [string]
@@ -345,5 +468,31 @@ describe('settingsRepo', () => {
     )
     expect(r.settings.get().theme).toBe('system')
     expect(r.settings.get().weekStartsOn).toBe(1)
+  })
+})
+
+describe('seedDemoData', () => {
+  it('gives every started task a believable record (created <= started <= completed <= now)', () => {
+    const nowMs = new Date(2026, 10, 13, 15).getTime()
+    seedDemoData(r, { now: nowMs, today: '2026-11-13' })
+    const tasks = r.tasks.list()
+    for (const t of tasks) {
+      if (t.status === 'not_started') {
+        expect(t.startedAt).toBeNull()
+        continue
+      }
+      expect(t.startedAt, t.title).not.toBeNull()
+      const started = t.startedAt ?? 0
+      expect(t.createdAt, t.title).toBeLessThanOrEqual(started)
+      expect(started, t.title).toBeLessThanOrEqual(t.completedAt ?? nowMs)
+      expect(t.completedAt ?? 0, t.title).toBeLessThanOrEqual(nowMs)
+      expect(t.updatedAt, t.title).toBeLessThanOrEqual(nowMs)
+    }
+    const done = tasks.filter((t) => t.status === 'done')
+    expect(done.some((t) => t.startedAt === t.completedAt)).toBe(true)
+    expect(done.some((t) => (t.completedAt ?? 0) - (t.startedAt ?? 0) > 7 * 86_400_000)).toBe(true)
+    expect(
+      tasks.some((t) => t.status === 'in_progress' && t.startDate === null && t.dueDate === null),
+    ).toBe(true)
   })
 })

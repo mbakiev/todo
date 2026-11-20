@@ -14,6 +14,7 @@ import { toast } from 'sonner'
 import { create } from 'zustand'
 import { DEFAULT_PRIORITY } from '@shared/constants'
 import type { CreateTaskInput, MoveTaskInput, UpdateTaskPatch } from '@shared/ipc'
+import { statusTimestamps } from '@shared/lifecycle'
 import { positionBetween, topPosition } from '@shared/ordering'
 import type { DataChange, Task } from '@shared/types'
 import { api } from '@/lib/api'
@@ -193,7 +194,8 @@ export const useTasksStore = create<TasksState>()((set, get) => {
         tagIds: input.tagIds ?? [],
         createdAt: now,
         updatedAt: now,
-        completedAt: status === 'done' ? now : null,
+        // Same transition rule as the repo (shared/lifecycle.ts).
+        ...statusTimestamps(null, status, now),
       }
       put(optimistic)
       try {
@@ -221,7 +223,7 @@ export const useTasksStore = create<TasksState>()((set, get) => {
       const now = Date.now()
       const values: Partial<Task> = { ...stripUndefined(patch), updatedAt: now } as Partial<Task>
       if (patch.status !== undefined && patch.status !== prev.status) {
-        values.completedAt = patch.status === 'done' ? now : null
+        Object.assign(values, statusTimestamps(prev, patch.status, now))
         if (patch.position === undefined) {
           const column = Object.values(get().byId).filter(
             (t) => t.status === patch.status && t.id !== id,
@@ -254,7 +256,7 @@ export const useTasksStore = create<TasksState>()((set, get) => {
         status,
         position: positionBetween(before, after),
         updatedAt: now,
-        completedAt: status === prev.status ? prev.completedAt : status === 'done' ? now : null,
+        ...statusTimestamps(prev, status, now),
       }
       const seq = nextSeq++
       begin(id, { seq, kind: 'patch', values })

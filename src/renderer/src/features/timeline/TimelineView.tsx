@@ -31,6 +31,7 @@ import {
   dateToX,
   monthStarts,
   rangeDays,
+  rebaseScrollLeft,
   scrollLeftFor,
   weekendOffsetDays,
   weekStartOffsetDays,
@@ -39,7 +40,7 @@ import {
   type TaskDates,
   type Zoom,
 } from './timelineGeometry'
-import { buildTimelineRows, type TimelineRow } from './timelineRows'
+import { buildTimelineRows, firstRecentRowIndex, rowOffset, type TimelineRow } from './timelineRows'
 import { useBarDrag, type DragPreview } from './useBarDrag'
 import { useTimelineViewStore } from './timelineViewStore'
 
@@ -105,12 +106,12 @@ export function TimelineView() {
   }, [])
 
   const timelineTasks = useMemo(
-    () => filterTimeline(tasks, { showCompleted }),
-    [tasks, showCompleted],
+    () => filterTimeline(tasks, today, { showCompleted }),
+    [tasks, today, showCompleted],
   )
   const rows = useMemo(
-    () => buildTimelineRows(timelineTasks, groupBy, collapsed),
-    [timelineTasks, groupBy, collapsed],
+    () => buildTimelineRows(timelineTasks, today, groupBy, collapsed),
+    [timelineTasks, today, groupBy, collapsed],
   )
 
   const dw = DAY_WIDTH[zoom]
@@ -131,6 +132,7 @@ export function TimelineView() {
     scrollRef,
     range,
     dayWidth: dw,
+    today,
     leftPaneWidth: LEFT_W,
     onCommit: commit,
   })
@@ -151,35 +153,63 @@ export function TimelineView() {
   const items = virtualizer.getVirtualItems()
   const bodyHeight = Math.max(virtualizer.getTotalSize(), viewport.height - HEADER_H - 1)
 
-  // Scroll position: today near the left edge on first render; across zoom changes keep
-  // the date at the left edge where it was.
-  const leftDay = useRef<number | null>(null)
-  const lastZoom = useRef<Zoom | null>(null)
+  // Scroll position: today near the left edge on first render; afterwards the date at the left
+  // edge stays put across zoom changes and across range-start moves (`timelineRange` follows
+  // the data: Completed toggled, a filter, the earliest started task finished, midnight).
+  // One effect handles both so a render that changes zoom and start shifts only once.
+  const zoomAnchor = useRef<{ scrollLeft: number; start: LocalDate; dayWidth: number } | null>(null)
+  const placed = useRef<{ zoom: Zoom; start: LocalDate; dayWidth: number } | null>(null)
   useLayoutEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    if (lastZoom.current === null) {
+    const prev = placed.current
+    const to = { start: range.start, dayWidth: dw }
+    if (prev === null) {
       el.scrollLeft = scrollLeftFor(today, range, zoom)
-    } else if (lastZoom.current !== zoom && leftDay.current !== null) {
-      el.scrollLeft = leftDay.current * dw
+    } else if (prev.zoom !== zoom && zoomAnchor.current !== null) {
+      el.scrollLeft = rebaseScrollLeft(zoomAnchor.current.scrollLeft, zoomAnchor.current, to)
+      zoomAnchor.current = null
+    } else if (prev.start !== range.start) {
+      el.scrollLeft = rebaseScrollLeft(el.scrollLeft, prev, to)
     }
-    lastZoom.current = zoom
-    // `range` / `today` only matter for the very first positioning.
+    placed.current = { zoom, ...to }
+    // `today` and the rest of `range` only matter for the very first positioning.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [zoom, dw])
+  }, [zoom, dw, range.start])
 
   const setZoom = useCallback(
     (next: Zoom) => {
       const el = scrollRef.current
-      if (el) leftDay.current = el.scrollLeft / DAY_WIDTH[zoom]
+      const at = placed.current
+      if (el && at) zoomAnchor.current = { scrollLeft: el.scrollLeft, ...at }
       setZoomState(next)
     },
-    [zoom, setZoomState],
+    [setZoomState],
   )
 
+  // Vertically, the first row whose bar reaches today − 7 (or is open work) goes to the top,
+  // so with Completed on the first screen is not old history far off to the left. Only on
+  // first render (once there are rows) and on "Today"; zoom changes only touch scrollLeft.
+  const topRowOffset = useCallback(
+    (): number =>
+      rowOffset(rows, firstRecentRowIndex(rows, today), { task: ROW_H, group: GROUP_ROW_H }),
+    [rows, today],
+  )
+  const positionedVertically = useRef(false)
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (!el || positionedVertically.current || rows.length === 0) return
+    positionedVertically.current = true
+    el.scrollTop = topRowOffset()
+  }, [rows, topRowOffset])
+
   const scrollToToday = useCallback(() => {
-    scrollRef.current?.scrollTo({ left: scrollLeftFor(today, range, zoom), behavior: 'smooth' })
-  }, [today, range, zoom])
+    scrollRef.current?.scrollTo({
+      left: scrollLeftFor(today, range, zoom),
+      top: topRowOffset(),
+      behavior: 'smooth',
+    })
+  }, [today, range, zoom, topRowOffset])
 
   const onRowClick = useCallback(
     (taskId: string) => {
@@ -199,7 +229,12 @@ export function TimelineView() {
   const empty = timelineTasks.length === 0
 
   return (
-    <div className="relative h-full" data-testid="timeline-view" data-current-zoom={zoom}>
+    <div
+      className="relative h-full"
+      data-testid="timeline-view"
+      data-current-zoom={zoom}
+      data-range-start={range.start}
+    >
       <TimelineToolbar
         zoom={zoom}
         onZoom={setZoom}
@@ -212,9 +247,6 @@ export function TimelineView() {
       <div
         ref={scrollRef}
         className="h-full scrollbar-thin overflow-auto overscroll-none"
-        onScroll={(e) => {
-          leftDay.current = e.currentTarget.scrollLeft / dw
-        }}
         style={
           {
             '--grid-line': 'color-mix(in oklab, var(--border) 55%, transparent)',
@@ -328,8 +360,8 @@ export function TimelineView() {
       {empty && (
         <p className="pointer-events-none absolute inset-x-0 top-1/2 text-center text-[13px] text-muted-foreground">
           {filterActive
-            ? 'No dated tasks match the current filters.'
-            : 'Tasks with a start or due date show up here.'}
+            ? 'No tasks on the timeline match the current filters.'
+            : 'Tasks with a date, and anything in progress, show up here.'}
         </p>
       )}
     </div>
@@ -441,9 +473,10 @@ const GridRow = memo(function GridRow({
   preview: DragPreview | null
   onBarPointerDown(e: ReactPointerEvent, task: Task, mode: DragMode): void
 } & RowHandlers) {
-  const dates = preview?.dates ?? task
-  const rect = barRect(dates, range, DAY_WIDTH[zoom])
-  const overdue = isOverdue({ status: task.status, dueDate: dates.dueDate }, today)
+  // A drag preview replaces the plan: a planned bar follows it, a started bar its due date.
+  const subject = useMemo(() => (preview ? { ...task, ...preview.dates } : task), [task, preview])
+  const rect = barRect(subject, range, DAY_WIDTH[zoom], today)
+  const overdue = isOverdue(subject, today)
   return (
     <TaskContextMenu task={task}>
       <div

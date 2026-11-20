@@ -1,5 +1,7 @@
 // Calendar view (spec §6 "Calendar"): custom month grid with lane-packed bars and chips,
 // "+N more" overflow popovers, drag-to-reschedule (dnd-kit) and click-to-create.
+// Items are laid out by `displaySpan`: the plan for not_started tasks (these drag), the record
+// for started / done tasks (started → today / due, or → completed; these do not drag).
 import {
   DndContext,
   DragOverlay,
@@ -19,6 +21,7 @@ import {
   addMonths,
   diffDays,
   eachDay,
+  formatShortDate,
   localDateToDate,
   maxDate,
   minDate,
@@ -26,7 +29,7 @@ import {
   weekdayShort,
 } from '@shared/dates'
 import type { LocalDate, Task } from '@shared/types'
-import { dateBadge, filterCalendar, taskSpan, tasksInRange } from '@shared/views'
+import { dateBadge, displaySpan, filterCalendar, taskSpan, tasksInRange } from '@shared/views'
 import { ToolbarButton, ToolbarControls } from '@/app/ToolbarControls'
 import { StartDateBadge, TaskContextMenu } from '@/components/task'
 import { Button } from '@/components/ui/button'
@@ -40,6 +43,7 @@ import { useUiStore } from '@/stores/uiStore'
 import {
   DAYS_PER_WEEK,
   fitWeek,
+  itemTitle,
   layoutWeek,
   monthGridRange,
   monthGridWeeks,
@@ -218,16 +222,29 @@ function MorePopover({
         </div>
         <ul className="flex max-h-72 scrollbar-thin flex-col gap-0.5 overflow-y-auto">
           {tasks.map((t) => {
-            const span = taskSpan(t)
+            const span = displaySpan(t, today)
             const kind = span && span.start !== span.end ? 'bar' : 'chip'
-            const badge = dateBadge(t)
+            // Planned items keep the plan badge ("Starts <date>" for start-only); started and
+            // done items say when they really started / finished instead.
+            const badge = span?.source === 'actual' ? null : dateBadge(t)
+            const record =
+              span?.source !== 'actual'
+                ? null
+                : span.ongoing
+                  ? `Started ${formatShortDate(span.start, today)}`
+                  : `Done ${formatShortDate(span.end, today)}`
             return (
               <li key={t.id} className="h-6">
                 <TaskContextMenu task={t}>
                   <button
                     type="button"
                     data-task-id={t.id}
+                    data-status={t.status}
+                    data-source={span?.source}
+                    data-ongoing={span?.ongoing}
                     data-selected={t.id === selectedTaskId || undefined}
+                    aria-label={t.title}
+                    title={itemTitle(t, today)}
                     className={cn(
                       'flex h-full w-full items-center rounded-[4px] text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/60',
                       t.id === selectedTaskId && 'ring-2 ring-primary/70',
@@ -247,6 +264,11 @@ function MorePopover({
                     />
                     {badge?.kind === 'start' && (
                       <StartDateBadge startDate={badge.date} className="shrink-0 px-1.5" />
+                    )}
+                    {record !== null && (
+                      <span className="shrink-0 px-1.5 text-[11px] font-medium whitespace-nowrap text-muted-foreground tabular-nums">
+                        {record}
+                      </span>
                     )}
                   </button>
                 </TaskContextMenu>
@@ -294,8 +316,8 @@ function WeekRow({
 }: WeekRowProps) {
   const days = weekDays(weekStart)
   const fitted = useMemo(
-    () => fitWeek(layoutWeek(weekStart, tasks), maxLanes),
-    [weekStart, tasks, maxLanes],
+    () => fitWeek(layoutWeek(weekStart, tasks, today), maxLanes),
+    [weekStart, tasks, today, maxLanes],
   )
   const monthKey = month.slice(0, 7)
   return (
@@ -394,8 +416,13 @@ export function CalendarView() {
   const weeks = useMemo(() => monthGridWeeks(month, weekStartsOn), [month, weekStartsOn])
   const visible = useMemo(() => {
     const range = monthGridRange(month, weekStartsOn)
-    return tasksInRange(filterCalendar(filtered, { showCompleted }), range.start, range.end)
-  }, [filtered, showCompleted, month, weekStartsOn])
+    return tasksInRange(
+      filterCalendar(filtered, today, { showCompleted }),
+      today,
+      range.start,
+      range.end,
+    )
+  }, [filtered, today, showCompleted, month, weekStartsOn])
 
   const [gridRef, maxLanes] = useMaxLanes(weeks.length)
 
@@ -408,7 +435,8 @@ export function CalendarView() {
   const onDragStart = useCallback((e: DragStartEvent) => {
     const data = e.active.data.current as DragData | undefined
     const task = data ? useTasksStore.getState().byId[data.taskId] : undefined
-    const span = task ? taskSpan(task) : null
+    // Only planned (not_started) items are draggable; the drag moves the plan (`taskSpan`).
+    const span = task && task.status === 'not_started' ? taskSpan(task) : null
     if (!task || !span) return
     const p = pointerOf(e.activatorEvent)
     const grabbed = p ? dateAtPoint(p.x, p.y) : null

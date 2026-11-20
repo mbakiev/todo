@@ -1,6 +1,7 @@
 // Pointer handling for moving / resizing timeline bars. The date math lives in
 // `timelineGeometry.applyDrag`; this hook only tracks the pointer, auto-scrolls near the
-// edges, previews, commits on release and cancels on Esc.
+// edges, previews, commits on release and cancels on Esc. Which drags a bar offers depends on
+// its status (`dragModes`): a press that cannot drag is left alone, so it stays a click.
 import {
   useCallback,
   useEffect,
@@ -9,13 +10,15 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
-import type { Task } from '@shared/types'
-import { taskSpan } from '@shared/views'
+import type { LocalDate, Task } from '@shared/types'
+import { displaySpan, startedOn } from '@shared/views'
 import {
   applyDrag,
   datesPatch,
+  dragModes,
   pxToDays,
   type DateRange,
+  type DragContext,
   type DragMode,
   type TaskDates,
 } from './timelineGeometry'
@@ -36,6 +39,7 @@ interface Session {
   taskId: string
   mode: DragMode
   original: TaskDates
+  ctx: DragContext
   startX: number
   startScroll: number
   /** Extra px between the drawn bar and its range position (sticky pre-range stubs). */
@@ -52,6 +56,7 @@ export interface UseBarDragOptions {
   scrollRef: React.RefObject<HTMLDivElement | null>
   range: DateRange
   dayWidth: number
+  today: LocalDate
   /** Width of the sticky left pane; auto-scroll starts at the grid's visible left edge. */
   leftPaneWidth: number
   onCommit(taskId: string, patch: Partial<TaskDates>): void
@@ -61,6 +66,7 @@ export function useBarDrag({
   scrollRef,
   range,
   dayWidth,
+  today,
   leftPaneWidth,
   onCommit,
 }: UseBarDragOptions) {
@@ -70,9 +76,9 @@ export function useBarDrag({
   const teardown = useRef<(() => void) | null>(null)
 
   // Latest values for the window listeners without re-binding them mid-drag.
-  const latest = useRef({ range, dayWidth, leftPaneWidth, onCommit })
+  const latest = useRef({ range, dayWidth, today, leftPaneWidth, onCommit })
   useLayoutEffect(() => {
-    latest.current = { range, dayWidth, leftPaneWidth, onCommit }
+    latest.current = { range, dayWidth, today, leftPaneWidth, onCommit }
   })
 
   useEffect(() => () => teardown.current?.(), [])
@@ -80,17 +86,21 @@ export function useBarDrag({
   const onPointerDown = useCallback(
     (e: ReactPointerEvent, task: Task, mode: DragMode) => {
       if (e.button !== 0 || e.ctrlKey || e.metaKey) return
+      // Started bars only resize their end; done bars do not drag. Not a drag = a plain click.
+      if (!dragModes(task.status).includes(mode)) return
       const el = scrollRef.current
       if (!el) return
       e.stopPropagation()
       teardown.current?.()
-      const span = taskSpan(task)
+      const { today: now } = latest.current
+      const span = displaySpan(task, now)
       const beforeRange = span !== null && span.end < latest.current.range.start
 
       const s: Session = {
         taskId: task.id,
         mode,
         original: { startDate: task.startDate, dueDate: task.dueDate },
+        ctx: { status: task.status, today: now, startedOn: startedOn(task) },
         startX: e.clientX,
         startScroll: el.scrollLeft,
         offset: beforeRange ? el.scrollLeft : 0,
@@ -117,7 +127,7 @@ export function useBarDrag({
         setPreview({
           taskId: s.taskId,
           mode: s.mode,
-          dates: applyDrag(s.original, s.mode, delta, latest.current.range),
+          dates: applyDrag(s.original, s.mode, delta, latest.current.range, s.ctx),
         })
       }
 
@@ -164,7 +174,7 @@ export function useBarDrag({
             window.addEventListener('pointercancel', release, { once: true, capture: true })
           } else release()
           if (commit) {
-            const next = applyDrag(s.original, s.mode, s.delta, latest.current.range)
+            const next = applyDrag(s.original, s.mode, s.delta, latest.current.range, s.ctx)
             const patch = datesPatch(s.original, next)
             if (patch) latest.current.onCommit(s.taskId, patch)
           }

@@ -1,8 +1,18 @@
 // View filter and sort logic. Pure functions of (tasks, today, settings); unit-tested.
 // Components must not re-implement any of these rules.
 
-import { STATUSES } from './constants'
-import { addDays, endOfWeek, localDateOfTimestamp, maxDate, startOfWeek } from './dates'
+import { STATUSES, TIMELINE_MAX_LOOKBACK_DAYS } from './constants'
+import {
+  addDays,
+  endOfWeek,
+  formatElapsed,
+  formatShortDate,
+  localDateOfTimestamp,
+  maxDate,
+  minDate,
+  startOfWeek,
+} from './dates'
+import { effectiveStartedAt } from './lifecycle'
 import { compareByPosition } from './ordering'
 import type { BoardScope, BoardSort, LocalDate, Priority, Settings, Status, Task } from './types'
 
@@ -41,7 +51,21 @@ export function completedOn(task: Pick<Task, 'completedAt'>): LocalDate | null {
   return task.completedAt === null ? null : localDateOfTimestamp(task.completedAt)
 }
 
-/** Inclusive `[start, end]` span; a single-date task is a one-day span. Null when undated. */
+/**
+ * Local calendar date the task actually started on (via `effectiveStartedAt`, so legacy rows
+ * without `startedAt` still get one). Null only for not_started tasks.
+ */
+export function startedOn(
+  task: Pick<Task, 'status' | 'startedAt' | 'completedAt' | 'createdAt' | 'updatedAt'>,
+): LocalDate | null {
+  const ms = effectiveStartedAt(task)
+  return ms === null ? null : localDateOfTimestamp(ms)
+}
+
+/**
+ * The PLAN as an inclusive `[start, end]` span; a single-date task is a one-day span. Null
+ * when undated. Still used for drag math on planned bars; views lay out by `displaySpan`.
+ */
 export function taskSpan(
   task: Pick<Task, 'startDate' | 'dueDate'>,
 ): { start: LocalDate; end: LocalDate } | null {
@@ -49,6 +73,37 @@ export function taskSpan(
   const end = task.dueDate ?? task.startDate
   if (start === null || end === null) return null
   return { start, end }
+}
+
+/**
+ * What the Timeline and Calendar draw for a task (inclusive `YYYY-MM-DD` dates):
+ * - `planned`: a not_started task's plan (`taskSpan`; null when undated). `ongoing: false`.
+ * - `actual`, `ongoing: true`: in_progress / blocked from `startedOn` to
+ *   `max(today, dueDate ?? today)`. Never null, so every started task appears.
+ * - `actual`, `ongoing: false`: done from `startedOn` to the completion date.
+ */
+export interface DisplaySpan {
+  start: LocalDate
+  end: LocalDate
+  source: 'planned' | 'actual'
+  /** Still open and started: the span's end is (at least) today and moves with it. */
+  ongoing: boolean
+}
+
+/** See `DisplaySpan`. `end >= start` always holds (clock / time-zone changes are clamped). */
+export function displaySpan(task: Task, today: LocalDate): DisplaySpan | null {
+  if (task.status === 'not_started') {
+    const span = taskSpan(task)
+    return span === null ? null : { ...span, source: 'planned', ongoing: false }
+  }
+  // Non-null for every started status (effectiveStartedAt falls back for legacy rows).
+  const start = startedOn(task) ?? today
+  if (task.status === 'done') {
+    const end = localDateOfTimestamp(task.completedAt ?? task.updatedAt)
+    return { start, end: maxDate(start, end), source: 'actual', ongoing: false }
+  }
+  const end = maxDate(today, task.dueDate ?? today)
+  return { start, end: maxDate(start, end), source: 'actual', ongoing: true }
 }
 
 // ---------------------------------------------------------------------------
@@ -207,45 +262,158 @@ export function compareByAnchor(a: Task, b: Task): number {
 }
 
 /**
- * Timeline set: tasks with at least one date; open only unless `showCompleted`.
- * Sorted by anchor date.
+ * Tie-breakers after the display-span start (`compareByDisplayStart`): due asc (nulls last),
+ * priority desc, newest first. Exported for callers that cache the span starts.
  */
-export function filterTimeline(tasks: readonly Task[], options: DatedViewOptions = {}): Task[] {
-  return tasks
-    .filter((t) => hasAnyDate(t) && (options.showCompleted === true || isOpen(t)))
-    .sort(compareByAnchor)
+export function compareDueThenPriority(a: Task, b: Task): number {
+  return (
+    compareNullableDateAsc(a.dueDate, b.dueDate) || b.priority - a.priority || newestFirst(a, b)
+  )
 }
 
-/** Calendar set: tasks with at least one date; done included unless `showCompleted === false`. */
-export function filterCalendar(tasks: readonly Task[], options: DatedViewOptions = {}): Task[] {
-  return tasks
-    .filter((t) => hasAnyDate(t) && (options.showCompleted !== false || isOpen(t)))
-    .sort(compareByAnchor)
+/**
+ * Timeline / calendar order: display-span start asc (tasks without a span last), then due
+ * asc, then priority desc, then newest first.
+ */
+export function compareByDisplayStart(today: LocalDate): (a: Task, b: Task) => number {
+  return (a, b) =>
+    compareNullableDateAsc(
+      displaySpan(a, today)?.start ?? null,
+      displaySpan(b, today)?.start ?? null,
+    ) || compareDueThenPriority(a, b)
 }
 
-/** Tasks whose span intersects `[from, to]` (inclusive). */
-export function tasksInRange(tasks: readonly Task[], from: LocalDate, to: LocalDate): Task[] {
+/** Sorts in place by `compareByDisplayStart`, computing each span once. */
+function sortByDisplayStart(tasks: Task[], today: LocalDate): Task[] {
+  const starts = new Map(tasks.map((t) => [t, displaySpan(t, today)?.start ?? null]))
+  return tasks.sort(
+    (a, b) =>
+      compareNullableDateAsc(starts.get(a) ?? null, starts.get(b) ?? null) ||
+      compareDueThenPriority(a, b),
+  )
+}
+
+/**
+ * Timeline set: tasks with a display span (every started task, plus not_started tasks with a
+ * plan); open only unless `showCompleted`. Done tasks whose span ends before
+ * `timelineRange(...).start` are left out (history older than the look-back is not drawn as
+ * left-edge stubs); open tasks never are. Sorted by `compareByDisplayStart`.
+ */
+export function filterTimeline(
+  tasks: readonly Task[],
+  today: LocalDate,
+  options: DatedViewOptions = {},
+): Task[] {
+  const candidates = tasks.filter(
+    (t) => (options.showCompleted === true || isOpen(t)) && displaySpan(t, today) !== null,
+  )
+  const { start } = timelineRange(candidates, today)
+  return sortByDisplayStart(
+    candidates.filter((t) => {
+      if (isOpen(t)) return true
+      const span = displaySpan(t, today)
+      return span !== null && span.end >= start
+    }),
+    today,
+  )
+}
+
+/**
+ * Calendar set: tasks with a display span; done included unless `showCompleted === false`.
+ * Sorted by `compareByDisplayStart`.
+ */
+export function filterCalendar(
+  tasks: readonly Task[],
+  today: LocalDate,
+  options: DatedViewOptions = {},
+): Task[] {
+  return sortByDisplayStart(
+    tasks.filter(
+      (t) => (options.showCompleted !== false || isOpen(t)) && displaySpan(t, today) !== null,
+    ),
+    today,
+  )
+}
+
+/** Tasks whose display span intersects `[from, to]` (inclusive). */
+export function tasksInRange(
+  tasks: readonly Task[],
+  today: LocalDate,
+  from: LocalDate,
+  to: LocalDate,
+): Task[] {
   return tasks.filter((t) => {
-    const span = taskSpan(t)
+    const span = displaySpan(t, today)
     return span !== null && span.start <= to && span.end >= from
   })
 }
 
 /**
- * Timeline date range: starts one week before today; ends at the latest task date, but at
- * least 6 weeks after today.
+ * Timeline date range over display spans.
+ * - start: `today − 7`, reaching further back to the earliest ACTUAL span start (where started
+ *   or, with Completed on, finished work really began), but never before
+ *   `today − TIMELINE_MAX_LOOKBACK_DAYS`. Planned (not_started) spans do not pull it back, so
+ *   an old overdue plan still clamps to the left edge instead of stretching the chart.
+ * - end: the latest display-span end, but at least 6 weeks after today.
  */
 export function timelineRange(
   tasks: readonly Task[],
   today: LocalDate,
 ): { start: LocalDate; end: LocalDate } {
-  const start = addDays(today, -7)
+  const floor = addDays(today, -TIMELINE_MAX_LOOKBACK_DAYS)
+  let start = addDays(today, -7)
   let end = addDays(today, 42)
   for (const t of tasks) {
-    const span = taskSpan(t)
-    if (span) end = maxDate(end, span.end)
+    const span = displaySpan(t, today)
+    if (!span) continue
+    end = maxDate(end, span.end)
+    if (span.source === 'actual') start = minDate(start, span.start)
   }
-  return { start, end }
+  return { start: maxDate(start, floor), end }
+}
+
+// ---------------------------------------------------------------------------
+// Progress wording (Timeline tooltip, Calendar title / aria text)
+// ---------------------------------------------------------------------------
+
+/**
+ * Human lines describing a started task's record, first line first, for the Timeline tooltip
+ * and the Calendar `title` / aria text (join with " · " for a single line). Dates use
+ * `formatShortDate` (no year in the current year); durations use `formatElapsed`.
+ * - in_progress: "Started Nov 3 · in progress 16 days" [+ due line]
+ * - blocked:     "Blocked · started Nov 3 · 16 days" [+ due line]
+ *   due line:    "Due Nov 25" / "Due today" / "Overdue · was due Nov 14" (none when undated)
+ * - done:        "Nov 3 – Nov 12 · took 9 days"; same day: "Nov 12 · took 3 h 20 min";
+ *                started and completed at the same instant: "Completed Nov 12"
+ * - not_started: [] — the caller keeps its existing plan wording.
+ * `now` (epoch ms) is the instant elapsed time is measured to for open tasks.
+ */
+export function describeProgress(task: Task, today: LocalDate, now: number = Date.now()): string[] {
+  const startedMs = effectiveStartedAt(task)
+  if (startedMs === null) return []
+  const started = localDateOfTimestamp(startedMs)
+  const fmt = (d: LocalDate): string => formatShortDate(d, today)
+  if (task.status === 'done') {
+    const completedMs = Math.max(task.completedAt ?? task.updatedAt, startedMs)
+    const completed = localDateOfTimestamp(completedMs)
+    if (completedMs === startedMs) return [`Completed ${fmt(completed)}`]
+    const took = formatElapsed(completedMs - startedMs)
+    return started === completed
+      ? [`${fmt(completed)} · took ${took}`]
+      : [`${fmt(started)} – ${fmt(completed)} · took ${took}`]
+  }
+  const elapsed = formatElapsed(now - startedMs)
+  const lines = [
+    task.status === 'blocked'
+      ? `Blocked · started ${fmt(started)} · ${elapsed}`
+      : `Started ${fmt(started)} · in progress ${elapsed}`,
+  ]
+  if (task.dueDate !== null) {
+    if (task.dueDate < today) lines.push(`Overdue · was due ${fmt(task.dueDate)}`)
+    else if (task.dueDate === today) lines.push('Due today')
+    else lines.push(`Due ${fmt(task.dueDate)}`)
+  }
+  return lines
 }
 
 // ---------------------------------------------------------------------------

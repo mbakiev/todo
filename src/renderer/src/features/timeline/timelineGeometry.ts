@@ -15,8 +15,8 @@ import {
   startOfWeek,
   weekdayShort,
 } from '@shared/dates'
-import type { LocalDate, Task, WeekStartsOn } from '@shared/types'
-import { taskSpan, timelineRange } from '@shared/views'
+import type { LocalDate, Status, Task, WeekStartsOn } from '@shared/types'
+import { displaySpan, taskSpan, timelineRange } from '@shared/views'
 
 export type Zoom = 'day' | 'week' | 'month'
 export const ZOOMS: readonly Zoom[] = ['day', 'week', 'month']
@@ -42,8 +42,8 @@ export function rangeDays(range: DateRange): number {
 }
 
 /**
- * The drawn range: `timelineRange` (one week before today → latest task date, min 6 weeks
- * ahead) plus `padDays` of trailing room to drag into, extended further when needed so the
+ * The drawn range: `timelineRange` (one week before today, or further back to where started /
+ * finished work actually began → latest display-span end, min 6 weeks ahead) plus `padDays` of trailing room to drag into, extended further when needed so the
  * grid fills at least `minDays` columns (wide windows at Month zoom).
  */
 export function buildTimelineRange(
@@ -105,8 +105,23 @@ export function visualSpan(span: DateRange, range: DateRange): VisualSpan {
 export interface BarRect extends VisualSpan {
   left: number
   width: number
-  /** The real (unclamped) span. */
+  /** The real (unclamped) display span (`displaySpan`): the plan, or what actually happened. */
   span: DateRange
+  /** `planned`: a not_started task's plan. `actual`: when a started / done task really ran. */
+  source: 'planned' | 'actual'
+  /** Started and still open: the bar reaches (at least) today and moves with it. */
+  ongoing: boolean
+  /**
+   * Ongoing and ending today only because the task is still open (no due date ahead of
+   * today): drawn flush to today's column with a flat right edge, reading "still going".
+   */
+  openEnded: boolean
+  /**
+   * Ongoing bars: px from the bar's left edge to the end of today's column, clamped into
+   * `[0, width]` — the part already elapsed. Anything right of it is the planned remainder
+   * up to a future due date. Equals `width` when nothing remains. Null when not ongoing.
+   */
+  elapsedWidth: number | null
 }
 
 /** Horizontal breathing room between a bar and its column edges. */
@@ -114,23 +129,51 @@ export function barInset(dayWidth: number): number {
   return dayWidth >= 24 ? 3 : 1
 }
 
-/** Bar geometry for a task, or null when the task has no date. */
-export function barRect(task: TaskDates, range: DateRange, dayWidth: number): BarRect | null {
-  const span = taskSpan(task)
-  if (!span) return null
+/**
+ * Bar geometry for a task from its `displaySpan`, or null when it has none (an undated
+ * not_started task). Pass `{ ...task, ...previewDates }` to draw a drag preview: a planned bar
+ * follows the previewed plan, a started bar the previewed due date.
+ */
+export function barRect(
+  task: Task,
+  range: DateRange,
+  dayWidth: number,
+  today: LocalDate,
+): BarRect | null {
+  const ds = displaySpan(task, today)
+  if (!ds) return null
+  const span: DateRange = { start: ds.start, end: ds.end }
   const v = visualSpan(span, range)
+  const openEnded =
+    ds.ongoing && ds.end === today && (task.dueDate === null || task.dueDate < today)
   const inset = barInset(dayWidth)
   const x0 = dateToX(v.start, range.start, dayWidth)
   const x1 = dateToX(v.end, range.start, dayWidth) + dayWidth
-  // A bar pinned to an edge runs flush to it, so the clamp reads as "continues past here".
+  // A bar pinned to an edge runs flush to it, so the clamp reads as "continues past here";
+  // an open-ended bar does the same at today's column.
   let left = v.clampedStart ? x0 : x0 + inset
-  const right = v.clampedEnd ? x1 : x1 - inset
+  const right = v.clampedEnd || openEnded ? x1 : x1 - inset
   let width = right - left
   if (width < MIN_BAR_WIDTH) {
     left = Math.max(0, left - (MIN_BAR_WIDTH - width) / 2)
     width = MIN_BAR_WIDTH
   }
-  return { ...v, left, width, span }
+  let elapsedWidth: number | null = null
+  if (ds.ongoing) {
+    // Nothing planned after today: the whole bar is elapsed (also when MIN_BAR_WIDTH widened it).
+    const todayEnd = dateToX(today, range.start, dayWidth) + dayWidth
+    elapsedWidth = ds.end <= today ? width : Math.min(width, Math.max(0, todayEnd - left))
+  }
+  return {
+    ...v,
+    left,
+    width,
+    span,
+    source: ds.source,
+    ongoing: ds.ongoing,
+    openEnded,
+    elapsedWidth,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -138,6 +181,35 @@ export function barRect(task: TaskDates, range: DateRange, dayWidth: number): Ba
 // ---------------------------------------------------------------------------
 
 export type DragMode = 'move' | 'start' | 'end'
+
+const ALL_MODES: readonly DragMode[] = ['move', 'start', 'end']
+const END_ONLY: readonly DragMode[] = ['end']
+const NO_MODES: readonly DragMode[] = []
+
+/**
+ * Which drags a bar offers. Dragging edits the PLAN only: a not_started bar moves and resizes;
+ * a started (in_progress / blocked) bar starts where work really began, so only its end
+ * handle drags (it sets the due date); a done bar is history and does not drag.
+ */
+export function dragModes(status: Status): readonly DragMode[] {
+  switch (status) {
+    case 'not_started':
+      return ALL_MODES
+    case 'in_progress':
+    case 'blocked':
+      return END_ONLY
+    case 'done':
+      return NO_MODES
+  }
+}
+
+/** What `applyDrag` needs to know about a started task (absent = a planned bar). */
+export interface DragContext {
+  status: Status
+  today: LocalDate
+  /** Local date the task actually started (`startedOn`); null for not_started. */
+  startedOn: LocalDate | null
+}
 
 function sameDates(a: TaskDates, b: TaskDates): boolean {
   return a.startDate === b.startDate && a.dueDate === b.dueDate
@@ -175,7 +247,11 @@ export function applyDrag(
   mode: DragMode,
   deltaDays: number,
   range: DateRange,
+  ctx?: DragContext,
 ): TaskDates {
+  if (ctx !== undefined && ctx.status !== 'not_started') {
+    return applyStartedDrag(dates, mode, deltaDays, range, ctx)
+  }
   const span = taskSpan(dates)
   if (!span || deltaDays === 0) return dates
   const v = visualSpan(span, range)
@@ -201,6 +277,32 @@ export function applyDrag(
   if (v.beforeRange) return dates // the stub's left edge is the range edge, not the task's start
   const next = fromSpan(dates, minDate(addDays(v.start, deltaDays), span.end), span.end)
   return sameDates(next, dates) ? dates : next
+}
+
+/**
+ * A started bar (drawn `startedOn → max(today, due ?? today)`): only the end handle drags, and
+ * it sets `dueDate` to the new drawn end, clamped to `>= today`. A drawn end that does not
+ * change is a no-op (an overdue due date is not silently rewritten to today). The planned
+ * start is superseded once work has really started: if it would fall after the new due date,
+ * it moves to the actual start (`startedOn`, clamped `<= due`) in the same patch, so the
+ * repo's start <= due rule holds. Done bars never change.
+ */
+function applyStartedDrag(
+  dates: TaskDates,
+  mode: DragMode,
+  deltaDays: number,
+  range: DateRange,
+  { status, today, startedOn }: DragContext,
+): TaskDates {
+  if (!dragModes(status).includes(mode) || deltaDays === 0) return dates
+  const drawnEnd = minDate(maxDate(today, dates.dueDate ?? today), range.end)
+  const end = maxDate(addDays(drawnEnd, deltaDays), today)
+  if (end === drawnEnd) return dates
+  const startDate =
+    dates.startDate !== null && dates.startDate > end
+      ? minDate(startedOn ?? today, end)
+      : dates.startDate
+  return { startDate, dueDate: end }
 }
 
 /** The `tasksStore.update` patch turning `before` into `after`, or null when unchanged. */
@@ -342,6 +444,20 @@ export function weekStartOffsetDays(rangeStart: LocalDate, weekStartsOn: WeekSta
  * scrollLeft that puts `date` near the left edge with the preceding week still visible, so
  * recent overdue work (and pinned pre-range stubs) stay in view.
  */
+/**
+ * The `scrollLeft` that keeps the same date at the grid's left edge after the range start
+ * and / or the day width change (`timelineRange` moves its start with the data: Completed
+ * toggled, a filter, the earliest started task finished, midnight). Fractional days are kept,
+ * so a zoom change preserves the exact position within the left-edge day.
+ */
+export function rebaseScrollLeft(
+  scrollLeft: number,
+  from: { start: LocalDate; dayWidth: number },
+  to: { start: LocalDate; dayWidth: number },
+): number {
+  return (scrollLeft / from.dayWidth + diffDays(to.start, from.start)) * to.dayWidth
+}
+
 export function scrollLeftFor(date: LocalDate, range: DateRange, zoom: Zoom): number {
   const dw = DAY_WIDTH[zoom]
   return Math.max(0, dateToX(date, range.start, dw) - 7 * dw)

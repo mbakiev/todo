@@ -6,6 +6,7 @@ import {
   eachDay,
   endOfMonth,
   endOfWeek,
+  formatElapsed,
   formatRelativeDate,
   formatShortDate,
   isLocalDate,
@@ -125,5 +126,38 @@ describe('presets and formatting', () => {
     expect(formatRelativeDate('2026-12-01', today)).toBe('Dec 1')
     expect(formatRelativeDate('2027-01-01', today)).toBe('Jan 1, 2027')
     expect(formatShortDate('2026-11-05')).toBe('Nov 5, 2026')
+  })
+})
+
+describe('formatElapsed', () => {
+  const MIN = 60_000
+  const H = 60 * MIN
+  const D = 24 * H
+  it('under a minute, including zero and negative', () => {
+    expect(formatElapsed(0)).toBe('under a minute')
+    expect(formatElapsed(59_999)).toBe('under a minute')
+    expect(formatElapsed(-5 * H)).toBe('under a minute')
+    expect(formatElapsed(Number.NaN)).toBe('under a minute')
+  })
+  it('minutes, truncated', () => {
+    expect(formatElapsed(MIN)).toBe('1 min')
+    expect(formatElapsed(59 * MIN + 59_999)).toBe('59 min')
+  })
+  it('hours and minutes under a day', () => {
+    expect(formatElapsed(H)).toBe('1 h')
+    expect(formatElapsed(3 * H + 20 * MIN)).toBe('3 h 20 min')
+    expect(formatElapsed(23 * H + 59 * MIN + 59_000)).toBe('23 h 59 min')
+  })
+  it('days and hours under a week', () => {
+    expect(formatElapsed(D)).toBe('1 day')
+    expect(formatElapsed(D + 4 * H + 30 * MIN)).toBe('1 day 4 h')
+    expect(formatElapsed(2 * D)).toBe('2 days')
+    expect(formatElapsed(6 * D + 23 * H)).toBe('6 days 23 h')
+  })
+  it('whole days from a week up, rounded', () => {
+    expect(formatElapsed(7 * D)).toBe('7 days')
+    expect(formatElapsed(9 * D + 4 * H)).toBe('9 days')
+    expect(formatElapsed(9 * D + 13 * H)).toBe('10 days')
+    expect(formatElapsed(400 * D)).toBe('400 days')
   })
 })
