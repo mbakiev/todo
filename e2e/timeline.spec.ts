@@ -118,6 +118,26 @@ async function drag(page: Page, from: { x: number; y: number }, dx: number): Pro
   for (let i = 1; i <= steps; i++) await page.mouse.move(from.x + (dx * i) / steps, from.y)
 }
 
+/**
+ * The bar's box with its row scrolled to the middle of the chart. A mouse press outside the
+ * viewport hits nothing, and rows low in the list can be below the fold: the window may be
+ * shorter than the test asked for (macOS clamps it to the display, which is small on CI
+ * runners). The middle, not just into view: at the bottom edge the horizontal scrollbar
+ * takes the press.
+ */
+async function boxInView(
+  b: Locator,
+): Promise<{ x: number; y: number; width: number; height: number }> {
+  await b.evaluate((el) =>
+    (
+      el as unknown as { scrollIntoView(o: { block: string; inline: string }): void }
+    ).scrollIntoView({ block: 'center', inline: 'nearest' }),
+  )
+  const box = await b.boundingBox()
+  if (!box) throw new Error('bar not visible')
+  return box
+}
+
 test('renders seeded bars and clamps a long-overdue task to the left edge', async () => {
   const { page, ancient } = await setupWithAncient()
   const bars = page.getByTestId('timeline-bar')
@@ -282,8 +302,7 @@ test('drags a bar to move it; dates persist after reload', async () => {
   const offsite = await taskByTitle(page, 'Plan team offsite logistics')
   const b = bar(page, offsite.id)
   await expect(b).toHaveAttribute('data-start', localDate(8))
-  const box = await b.boundingBox()
-  if (!box) throw new Error('bar not visible')
+  const box = await boxInView(b)
 
   await drag(page, { x: box.x + box.width / 2, y: box.y + box.height / 2 }, 3 * 40)
   await expect(page.getByTestId('timeline-drag-label')).toBeVisible()
@@ -305,10 +324,12 @@ test('drags a bar to move it; dates persist after reload', async () => {
 test('Esc cancels a drag', async () => {
   const { page } = await setup()
   const t = await taskByTitle(page, 'Quarterly security training')
-  const box = await bar(page, t.id).boundingBox()
-  if (!box) throw new Error('bar not visible')
+  const box = await boxInView(bar(page, t.id))
   await drag(page, { x: box.x + box.width / 2, y: box.y + box.height / 2 }, 2 * 40)
+  // The drag really started (otherwise "nothing changed" below would prove nothing).
+  await expect(page.getByTestId('timeline-drag-label')).toBeVisible()
   await page.keyboard.press('Escape')
+  await expect(page.getByTestId('timeline-drag-label')).toHaveCount(0)
   await page.mouse.up()
   await expect(bar(page, t.id)).toHaveAttribute('data-end', localDate(12))
   expect((await taskByTitle(page, 'Quarterly security training')).dueDate).toBe(localDate(12))
@@ -318,8 +339,7 @@ test('resizes an edge to change the due date; a single-date bar becomes a range'
   const { page } = await setup()
   const runbook = await taskByTitle(page, 'Update the on-call runbook')
   const b = bar(page, runbook.id)
-  let box = await b.boundingBox()
-  if (!box) throw new Error('bar not visible')
+  let box = await boxInView(b)
   await drag(page, { x: box.x + box.width - 2, y: box.y + box.height / 2 }, 2 * 40)
   await page.mouse.up()
   await expect(b).toHaveAttribute('data-end', localDate(5))
@@ -329,8 +349,7 @@ test('resizes an edge to change the due date; a single-date bar becomes a range'
 
   // Single-date (due only) task: dragging its right edge keeps the due date as the start.
   const dentist = await taskByTitle(page, 'Book dentist appointment')
-  box = await bar(page, dentist.id).boundingBox()
-  if (!box) throw new Error('bar not visible')
+  box = await boxInView(bar(page, dentist.id))
   await drag(page, { x: box.x + box.width - 2, y: box.y + box.height / 2 }, 2 * 40)
   await page.mouse.up()
   await expect(bar(page, dentist.id)).toHaveAttribute('data-end', localDate(3))
@@ -464,8 +483,7 @@ test('a started bar: the body does not drag, the end handle sets the due date', 
   await expect(b.locator('[data-handle="end"]')).toHaveCount(1)
 
   // End handle: two days later = a new due date.
-  let box = await b.boundingBox()
-  if (!box) throw new Error('bar not visible')
+  let box = await boxInView(b)
   await drag(page, { x: box.x + box.width - 2, y: box.y + box.height / 2 }, 2 * 40)
   await expect(page.getByTestId('timeline-drag-label')).toContainText('Due')
   await page.mouse.up()
@@ -476,8 +494,7 @@ test('a started bar: the body does not drag, the end handle sets the due date', 
   await expect(page.getByTestId('task-detail')).toHaveCount(0)
 
   // Body: no drag preview, nothing changes.
-  box = await b.boundingBox()
-  if (!box) throw new Error('bar not visible')
+  box = await boxInView(b)
   await drag(page, { x: box.x + 40, y: box.y + box.height / 2 }, 3 * 40)
   await expect(page.getByTestId('timeline-drag-label')).toHaveCount(0)
   await page.mouse.up()
@@ -614,11 +631,9 @@ test('screenshots (light + dark, each zoom)', async () => {
   // Drag preview.
   await page.keyboard.press('Escape')
   const offsite = await taskByTitle(page, 'Plan team offsite logistics')
-  const box = await bar(page, offsite.id).boundingBox()
-  if (box) {
-    await drag(page, { x: box.x + 30, y: box.y + box.height / 2 }, -2 * 40)
-    await page.screenshot({ path: join(SHOTS, 'timeline-dragging-light.png') })
-    await page.keyboard.press('Escape')
-    await page.mouse.up()
-  }
+  const box = await boxInView(bar(page, offsite.id))
+  await drag(page, { x: box.x + 30, y: box.y + box.height / 2 }, -2 * 40)
+  await page.screenshot({ path: join(SHOTS, 'timeline-dragging-light.png') })
+  await page.keyboard.press('Escape')
+  await page.mouse.up()
 })
